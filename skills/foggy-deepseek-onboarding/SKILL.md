@@ -1,0 +1,83 @@
+---
+name: foggy-deepseek-onboarding
+description: Install and operate a pinned Foggy CLI-first dev/test environment from DeepSeek Harness, including opaque datasource profiles, resumable verification, and schema discovery before semantic authoring. Use for initial Foggy setup or local Runtime onboarding; do not use for production deployment or MCP configuration.
+---
+
+# Foggy DeepSeek onboarding
+
+Set up Foggy through shell and `foggy-runtime` CLI. Do not configure Foggy MCP for this local workflow.
+
+## Mandatory orchestration boundary
+
+For every new-database onboarding session, this Skill is the orchestration authority until
+`onboard-status` reports `next.status=completed`:
+
+- Invoke datasource, schema, semantic, bundle, and query operations only through this Skill's
+  `scripts/onboard.ps1` or `scripts/onboard.sh`. Do not call `foggy-runtime` directly for those
+  operations, even if another loaded Skill documents equivalent CLI commands.
+- Use `foggy-ai-analysis` only to author TM/QM draft content. Its general direct-CLI workflow does not
+  supersede this Skill's state machine, approval gates, names, paths, query limit, or evidence rules.
+- Use the exact profile, datasource, namespace, bundle, model names, paths, fields, and query limit
+  supplied or confirmed by the user. Do not replace them with examples or inferred alternatives.
+- Do not use raw SQL to sample business rows during onboarding. `schema-discover` is the metadata gate;
+  any later SQL probe requires separate explicit approval and must be bounded and read-only.
+- Never use `--replace`, `--replace-bundle`, `--prune`, `--watch`, or `--execute` unless that exact
+  mutation was explicitly approved. Approval for adding a new resource is not approval to replace one.
+- Save each wrapper result as the single JSON object returned on stdout when the user requests evidence.
+  Do not claim completion when required evidence is missing or the persisted status is incomplete.
+- Never read query-execution evidence back into the conversation. Report only validation state,
+  execution state, row count, and evidence path; do not report row values or generated SQL containing
+  business literals.
+
+## Boundaries
+
+- Treat the bundled Launcher as local dev/test only. Its expected security mode is
+  `none-dev-test-only`; never expose it to a network.
+- Do not print, persist, or request secrets in chat. Use named environment variables or a private env
+  file outside the Skill and evidence directories.
+- Do not modify Foggy engine or CLI source. If setup cannot continue without such a change, stop and
+  ask the user for explicit authorization.
+- Before downloads, installs, replacement, Runtime start/stop, or removal, state the concrete action
+  and obtain any authorization required by the host.
+
+## Workflow
+
+1. Run `scripts/doctor.ps1 --project-root <root>` on Windows or
+   `bash scripts/doctor.sh --project-root <root>` on Linux.
+2. If the pinned CLI, Launcher, or analysis Skill is missing, run the matching `install` script. Use
+   `--dry-run` first when paths or permissions are uncertain.
+3. Run `runtime-start` and require successful `wait-ready` plus `capabilities`. Record engine,
+   Runtime API version, schema version, security mode, URL, namespace, PID, and evidence path.
+4. Confirm the project contains `.agents/skills/foggy-ai-analysis/SKILL.md`.
+5. For a new business database, read [references/onboarding-workflow.md](references/onboarding-workflow.md)
+   and prefer its two composite `onboard-datasource-run` / `onboard-semantic-run` commands. Require the
+   trusted operator to create the private CLI profile outside Harness. Accept only the opaque profile
+   ID, exact revision, datasource name/type, and namespace; never request JDBC URL, username,
+   password, or password environment-variable name in Harness.
+6. After schema discovery, use `foggy-ai-analysis` only to author TM/QM files in a separate project-local
+   draft directory. Register, validate, publish, and verify them through this Skill's wrapper using the deterministic commands in
+   [references/onboarding-workflow.md](references/onboarding-workflow.md). Do not publish, prune, replace
+   a bundle, or execute a business-data query without the matching explicit flag and user approval.
+7. Stop only the Runtime PID recorded by this package. Preserve Runtime data unless the user explicitly
+   requests purge.
+
+## Command contract
+
+All package scripts return one JSON object on stdout. Treat `success=false` or a nonzero exit code as a
+failure. Do not infer readiness from a fixed sleep; require CLI `wait-ready` and `capabilities`.
+
+Use this analysis order after setup:
+
+```text
+datasource test -> bind -> diagnostics
+tables list -> inspect -> optional bounded read-only SQL
+models validate -> bundles add/update -> models refresh -> models describe
+query validate -> query execute -> interpretation
+```
+
+In DeepSeek Harness, do not expand the composite onboarding commands back into these individual CLI
+operations. This order documents what the wrapper enforces internally and becomes a direct CLI workflow
+only after onboarding is complete.
+
+Keep user business data separate from the sales-drop SQLite demo. Prefer a read-only database account,
+opaque CLI profile references, and bounded query limits.

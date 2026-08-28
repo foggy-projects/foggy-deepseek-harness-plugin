@@ -1,0 +1,11 @@
+node_modules/
+coverage/
+.nyc_output/
+*.tgz
+
+.env
+.env.*
+!.env.example
+
+**/__pycache__/
+**/*.pyc

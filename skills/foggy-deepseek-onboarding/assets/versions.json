@@ -1,0 +1,93 @@
+{
+  "schemaVersion": "foggy-deepseek-onboarding-versions/v1",
+  "packageVersion": "0.4.0-beta.1",
+  "validatedAt": "2026-08-28",
+  "components": {
+    "deepseekHarness": {
+      "version": "0.1.1-rc.2",
+      "minimumNodeVersion": "22.19.0"
+    },
+    "cli": {
+      "version": "0.1.23",
+      "minimumPythonVersion": "3.11.0",
+      "wheel": {
+        "file": "foggy_runtime_cli-0.1.23-py3-none-any.whl",
+        "url": "https://github.com/foggy-projects/foggy-runtime-cli/releases/download/v0.1.23/foggy_runtime_cli-0.1.23-py3-none-any.whl",
+        "sha256": "4086e57c745d94ee9ccec65dde770eae488ec43409d9d42c6d21ce2dce7d6dc6"
+      },
+      "checksums": {
+        "file": "SHA256SUMS",
+        "url": "https://github.com/foggy-projects/foggy-runtime-cli/releases/download/v0.1.23/SHA256SUMS",
+        "sha256": "81d51918bb020b2ab50a2138529dd655740e507312210a7ceb1dda36c02f94ea"
+      }
+    },
+    "launcher": {
+      "version": "0.1.18",
+      "minimumJavaVersion": "17.0.0",
+      "runtimeApiContract": "foggy-runtime-api/v1",
+      "assets": [
+        {
+          "file": "foggy-runtime-launcher-0.1.18.jar",
+          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.18/foggy-runtime-launcher-0.1.18.jar",
+          "sha256": "2953d2fab39208b3fffefed033b34ec6f59da851920b533047a1d0909a1de049"
+        },
+        {
+          "file": "start-foggy-runtime.ps1",
+          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.18/start-foggy-runtime.ps1",
+          "sha256": "b54f2f144cfdc38afcc3e9167d0700248f476c93adb3e9d95431490430f7b549"
+        },
+        {
+          "file": "start-foggy-runtime.sh",
+          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.18/start-foggy-runtime.sh",
+          "sha256": "e801cc340bf0842e29045e5e24798921864114846b0e1aaff30640845c8f37d0"
+        },
+        {
+          "file": "README-foggy-runtime-launcher.md",
+          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.18/README-foggy-runtime-launcher.md",
+          "sha256": "0202546c5221cbb9343cf7367ceb20bff785fd85c2ba77cd0dac5395f6362674"
+        },
+        {
+          "file": "runtime-launcher-manifest.json",
+          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.18/runtime-launcher-manifest.json",
+          "sha256": "0065de9c516471b936927a0b13ed1b9380c484437352b2e589c5171932427326"
+        },
+        {
+          "file": "SHA256SUMS",
+          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.18/SHA256SUMS",
+          "sha256": "26f65a7112c115ccd19c6f80336b4335ab7773d54841376aa81504d1c3fcd21f"
+        }
+      ]
+    },
+    "analysisSkill": {
+      "name": "foggy-ai-analysis",
+      "version": "0.1.17",
+      "minimumCliVersion": "0.1.21",
+      "assets": [
+        {
+          "role": "zip",
+          "file": "foggy-ai-analysis-skill-0.1.17.zip",
+          "url": "https://github.com/foggy-projects/foggy-ai-analysis/releases/download/v0.1.17/foggy-ai-analysis-skill-0.1.17.zip",
+          "sha256": "2c5a10090befc38dd2cf8c3de5121d19c28682ca9c0fe72daf778d315c56c7ff"
+        },
+        {
+          "role": "manifest",
+          "file": "foggy-ai-analysis-skill-0.1.17-manifest.json",
+          "url": "https://github.com/foggy-projects/foggy-ai-analysis/releases/download/v0.1.17/foggy-ai-analysis-skill-0.1.17-manifest.json",
+          "sha256": "094b1401ff384f011ef80446dd639d8afb2585aa01d7a7ba49d39cb2968ae8bf"
+        },
+        {
+          "role": "checksums",
+          "file": "foggy-ai-analysis-skill-0.1.17-SHA256SUMS",
+          "url": "https://github.com/foggy-projects/foggy-ai-analysis/releases/download/v0.1.17/foggy-ai-analysis-skill-0.1.17-SHA256SUMS",
+          "sha256": "18804088cd7da7af6bbf70d658cb0d6a5a31e765470ed673dfd274f1789db240"
+        }
+      ]
+    }
+  },
+  "defaults": {
+    "port": 18066,
+    "namespace": "default",
+    "readinessTimeoutSeconds": 180,
+    "securityMode": "none-dev-test-only"
+  }
+}

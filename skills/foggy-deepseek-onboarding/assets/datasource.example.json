@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "foggy-deepseek-connection/v1",
+  "profile": "business",
+  "name": "business-db",
+  "type": "mysql",
+  "opaqueProfileId": "fop_0123456789abcdef0123456789abcdef",
+  "opaqueRevision": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "namespace": "business",
+  "schemas": ["public"],
+  "modelsDir": "models",
+  "evidenceDir": ".foggy/onboarding-command-evidence/business",
+  "readOnlyRecommended": true
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://foggy-projects.dev/schemas/deepseek-harness/onboarding-state.schema.json",
+  "title": "Foggy DeepSeek Harness resumable onboarding state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "profile", "installRoot", "dataRoot", "projectRoot", "connection", "semantic", "steps", "artifacts"],
+  "properties": {
+    "schemaVersion": {"const": "foggy-deepseek-onboarding-state/v1"},
+    "profile": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$"},
+    "createdAt": {"type": "string", "format": "date-time"},
+    "updatedAt": {"type": "string", "format": "date-time"},
+    "installRoot": {"type": "string"},
+    "dataRoot": {"type": "string"},
+    "projectRoot": {"type": "string"},
+    "runtime": {"type": "object"},
+    "connection": {"$ref": "connection.schema.json"},
+    "semantic": {"type": "object"},
+    "steps": {"type": "object"},
+    "artifacts": {"type": "object"}
+  }
+}

@@ -1,0 +1,6 @@
+# Foggy host service and its browser-side Settings contribution share one
+# dual-face package. dsh-client-modules discovers the client declaration in
+# package.json after this Host row becomes active.
+- insert:
+    - id: foggy-data-analysis
+      name: '@foggy-projects/deepseek-harness-plugin'

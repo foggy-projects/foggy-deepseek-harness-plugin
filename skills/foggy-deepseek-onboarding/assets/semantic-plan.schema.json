@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://foggy-projects.dev/schemas/deepseek-harness/semantic-plan.schema.json",
+  "title": "Foggy DeepSeek Harness semantic draft plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "draftDir", "bundleName", "queryModels"],
+  "properties": {
+    "schemaVersion": {"const": "foggy-deepseek-semantic-plan/v1"},
+    "profile": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "draftDir": {"type": "string", "minLength": 1},
+    "bundleName": {"type": "string", "minLength": 1},
+    "evidenceDir": {"type": "string", "minLength": 1},
+    "queryModels": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"}
+    }
+  }
+}

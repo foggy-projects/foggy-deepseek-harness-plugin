@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "foggy-deepseek-semantic-plan/v1",
+  "profile": "business",
+  "draftDir": ".foggy/onboarding-drafts/business",
+  "bundleName": "business-semantic",
+  "evidenceDir": ".foggy/onboarding-command-evidence/business",
+  "queryModels": ["FactOrderQueryModel"]
+}
