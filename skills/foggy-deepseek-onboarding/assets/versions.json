@@ -1,6 +1,6 @@
 {
   "schemaVersion": "foggy-deepseek-onboarding-versions/v1",
-  "packageVersion": "0.4.0-beta.1",
+  "packageVersion": "0.4.0-beta.2",
   "validatedAt": "2026-08-28",
   "components": {
     "deepseekHarness": {
@@ -13,12 +13,12 @@
       "wheel": {
         "file": "foggy_runtime_cli-0.1.23-py3-none-any.whl",
         "url": "https://github.com/foggy-projects/foggy-runtime-cli/releases/download/v0.1.23/foggy_runtime_cli-0.1.23-py3-none-any.whl",
-        "sha256": "4086e57c745d94ee9ccec65dde770eae488ec43409d9d42c6d21ce2dce7d6dc6"
+        "sha256": "db428812039e5961db93b5c0dc35b53a21d5c349428e6830c96fbf3218cf8a45"
       },
       "checksums": {
         "file": "SHA256SUMS",
         "url": "https://github.com/foggy-projects/foggy-runtime-cli/releases/download/v0.1.23/SHA256SUMS",
-        "sha256": "81d51918bb020b2ab50a2138529dd655740e507312210a7ceb1dda36c02f94ea"
+        "sha256": "1494d7f13af18bef321995509058a1ab43b1d0b2e9f9ea08230dd78028090221"
       }
     },
     "launcher": {

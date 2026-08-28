@@ -9,7 +9,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.0-beta.1')
+  assert.equal(pkg.version, '0.4.0-beta.2')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
   assert.equal(pkg.exports['./client'], './lib/client.js')
@@ -30,10 +30,25 @@ test('documents the pnpm workspace-root install required by DSH rc.2', async () 
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.0-beta.1')
+  assert.equal(versions.packageVersion, '0.4.0-beta.2')
   assert.equal(versions.components.cli.version, '0.1.23')
   assert.equal(versions.components.launcher.version, '0.1.18')
   assert.ok(versions.components.launcher.assets.every((asset) => asset.url && asset.sha256))
+})
+
+test('pins the publicly published CLI artifacts', async () => {
+  const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
+  assert.equal(versions.components.cli.wheel.sha256, 'db428812039e5961db93b5c0dc35b53a21d5c349428e6830c96fbf3218cf8a45')
+  assert.equal(versions.components.cli.checksums.sha256, '1494d7f13af18bef321995509058a1ab43b1d0b2e9f9ea08230dd78028090221')
+})
+
+test('ships a Linux experience entry that enforces native filesystem prerequisites', async () => {
+  const script = await readFile(join(root, 'experience', 'linux', 'prepare.sh'), 'utf8')
+  assert.match(script, /Node 22\.19\+/)
+  assert.match(script, /Python 3\.11\+/)
+  assert.match(script, /Java 17\+/)
+  assert.match(script, /\/mnt\//)
+  assert.match(script, /@deepseek-ai\/dsh@/)
 })
 
 test('rejects Java versions below the Launcher minimum', () => {

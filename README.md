@@ -8,7 +8,7 @@ only when the user selects **Initialize Foggy**.
 ## Local beta installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.1.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.2.tgz
 ```
 
 Restart `dsh web`, open Settings → Plugins → Foggy Data Analysis, and initialize
@@ -26,3 +26,9 @@ asset-cache directories. Neither variable is required for a normal install.
 
 Database credentials are deliberately outside the ordinary DSH settings
 document. The database and semantic-layer wizard is the next Bundle milestone.
+
+## Linux and WSL2 experience
+
+Ubuntu and WSL2 users can use the checked-in preflighted installer under
+[`experience/linux`](./experience/linux/README.md). It keeps DSH, its profile,
+the project workspace, and Foggy data on the Linux-native filesystem.
