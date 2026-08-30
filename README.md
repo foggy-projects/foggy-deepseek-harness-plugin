@@ -8,7 +8,7 @@ only when the user selects **Initialize Foggy**.
 ## Local beta installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.2.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.3.tgz
 ```
 
 Restart `dsh web`, open Settings → Plugins → Foggy Data Analysis, and initialize

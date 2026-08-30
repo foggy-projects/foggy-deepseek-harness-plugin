@@ -38,6 +38,93 @@ class OnboardingError(RuntimeError):
     pass
 
 
+PROGRESS_SCHEMA = "foggy-deepseek-onboarding-progress/v1"
+ACTIVE_PROGRESS: "ProgressReporter | None" = None
+
+
+class ProgressReporter:
+    total_steps = 6
+
+    def __init__(self, path: str | None, operation_id: str | None, kind: str) -> None:
+        self.path = Path(path).expanduser() if path else None
+        self.operation_id = operation_id
+        self.kind = kind
+        self.started_at = now_utc()
+        self.phase = "preflight"
+        self.step_index = 0
+        self.fraction = 0.0
+        self.message = ""
+        self.current_file: str | None = None
+        self.completed_files: int | None = None
+        self.total_files: int | None = None
+
+    @property
+    def enabled(self) -> bool:
+        return self.path is not None
+
+    def _write(self, state: str, *, finished_at: str | None = None, error: str | None = None) -> None:
+        if not self.path:
+            return
+        bounded_step = max(0, min(self.step_index, self.total_steps))
+        bounded_fraction = max(0.0, min(float(self.fraction), 1.0))
+        percent = 100 if state == "succeeded" else round(((bounded_step + bounded_fraction) / self.total_steps) * 100)
+        payload = {
+            "schemaVersion": PROGRESS_SCHEMA,
+            "operationId": self.operation_id,
+            "kind": self.kind,
+            "state": state,
+            "phase": self.phase,
+            "message": self.message,
+            "currentFile": self.current_file,
+            "percent": percent,
+            "step": {"index": min(bounded_step + 1, self.total_steps), "total": self.total_steps},
+            "startedAt": self.started_at,
+            "updatedAt": now_utc(),
+        }
+        if self.completed_files is not None and self.total_files is not None:
+            payload["files"] = {"completed": self.completed_files, "total": self.total_files}
+        if finished_at:
+            payload["finishedAt"] = finished_at
+        if error:
+            payload["error"] = error
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_json(self.path, payload)
+
+    def update(
+        self,
+        phase: str,
+        step_index: int,
+        message: str,
+        *,
+        fraction: float = 0.0,
+        current_file: str | None = None,
+        completed_files: int | None = None,
+        total_files: int | None = None,
+    ) -> None:
+        self.phase = phase
+        self.step_index = step_index
+        self.fraction = fraction
+        self.message = message
+        self.current_file = current_file
+        self.completed_files = completed_files
+        self.total_files = total_files
+        self._write("running")
+
+    def finish(self) -> None:
+        self.phase = "complete"
+        self.step_index = self.total_steps
+        self.fraction = 0.0
+        self.message = "Foggy initialization completed"
+        self.current_file = None
+        self.completed_files = None
+        self.total_files = None
+        self._write("succeeded", finished_at=now_utc())
+
+    def fail(self, error: object) -> None:
+        self.message = "Foggy initialization failed"
+        self._write("failed", finished_at=now_utc(), error=str(error))
+
+
 def now_utc() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
@@ -182,7 +269,18 @@ def cached_asset(name: str, expected: str, cache_dirs: list[Path]) -> Path | Non
     return None
 
 
-def materialize(asset: dict, destination: Path, cache_dirs: list[Path]) -> dict:
+def materialize(
+    asset: dict,
+    destination: Path,
+    cache_dirs: list[Path],
+    *,
+    progress: ProgressReporter | None = None,
+    progress_phase: str = "",
+    progress_step: int = 0,
+    progress_index: int = 0,
+    progress_total: int = 1,
+    progress_message: str = "Downloading and verifying asset",
+) -> dict:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.is_file():
         verify_asset(destination, asset["sha256"])
@@ -196,7 +294,18 @@ def materialize(asset: dict, destination: Path, cache_dirs: list[Path]) -> dict:
         if temporary.exists():
             temporary.unlink()
         try:
-            urllib.request.urlretrieve(asset["url"], temporary)
+            def reporthook(block_count: int, block_size: int, total_size: int) -> None:
+                if progress is None or not progress_phase or total_size <= 0:
+                    return
+                downloaded = min(block_count * block_size, total_size)
+                fraction = (progress_index + downloaded / total_size) / max(progress_total, 1)
+                progress.update(
+                    progress_phase, progress_step, progress_message,
+                    fraction=fraction, current_file=asset["file"],
+                    completed_files=progress_index, total_files=progress_total,
+                )
+
+            urllib.request.urlretrieve(asset["url"], temporary, reporthook=reporthook)
             verify_asset(temporary, asset["sha256"])
             os.replace(temporary, destination)
         finally:
@@ -574,6 +683,7 @@ def java_probe() -> dict:
 
 
 def install_command(args: argparse.Namespace) -> dict:
+    global ACTIVE_PROGRESS
     versions = load_versions()
     install_root = normalized(args.install_root or default_install_root())
     data_root = normalized(args.data_root or default_data_root())
@@ -595,6 +705,13 @@ def install_command(args: argparse.Namespace) -> dict:
     }
     if args.dry_run:
         return {"success": True, "dryRun": True, "plan": plan}
+    progress = ProgressReporter(
+        getattr(args, "progress_file", None),
+        getattr(args, "operation_id", None),
+        getattr(args, "operation_kind", "initialize"),
+    )
+    ACTIVE_PROGRESS = progress
+    progress.update("preflight", 0, "Checking prerequisites")
     if sys.version_info < (3, 11):
         raise OnboardingError(f"Python 3.11+ required, got {sys.version.split()[0]}")
     if not project_root.is_dir():
@@ -605,20 +722,37 @@ def install_command(args: argparse.Namespace) -> dict:
     verified: list[dict] = []
 
     cli_component = components["cli"]
-    for role in ("wheel", "checksums"):
-        asset = cli_component[role]
-        verified.append(materialize(asset, downloads / "cli" / asset["file"], cache_dirs))
+    cli_assets = [cli_component[role] for role in ("wheel", "checksums")]
+    for index, asset in enumerate(cli_assets):
+        progress.update(
+            "cli", 1, "Downloading and verifying CLI",
+            fraction=index / len(cli_assets), current_file=asset["file"],
+            completed_files=index, total_files=len(cli_assets),
+        )
+        verified.append(materialize(
+            asset, downloads / "cli" / asset["file"], cache_dirs,
+            progress=progress, progress_phase="cli", progress_step=1,
+            progress_index=index, progress_total=len(cli_assets),
+            progress_message="Downloading and verifying CLI",
+        ))
+        progress.update(
+            "cli", 1, "Downloading and verifying CLI",
+            fraction=(index + 1) / len(cli_assets), current_file=asset["file"],
+            completed_files=index + 1, total_files=len(cli_assets),
+        )
     checksum_lines = (downloads / "cli" / cli_component["checksums"]["file"]).read_text(encoding="utf-8").splitlines()
     checksum_entries = {line.split(maxsplit=1)[1].strip(): line.split(maxsplit=1)[0].lower() for line in checksum_lines if len(line.split(maxsplit=1)) == 2}
     wheel_asset = cli_component["wheel"]
     if checksum_entries.get(wheel_asset["file"]) != wheel_asset["sha256"]:
         raise OnboardingError("Pinned CLI SHA256SUMS does not match the pinned wheel hash")
     if args.skip_cli_install:
+        progress.update("cli", 1, "Using existing CLI", fraction=0.65, current_file="foggy-runtime")
         cli_command = normalized(args.cli_command or shutil.which("foggy-runtime") or "")
         if not cli_command.is_file():
             raise OnboardingError("--skip-cli-install requires --cli-command or foggy-runtime on PATH")
         cli_mode = "external"
     else:
+        progress.update("cli", 1, "Installing CLI", fraction=0.65, current_file="Python virtual environment")
         python_path = venv_python(install_root)
         if not python_path.is_file():
             venv.EnvBuilder(with_pip=True).create(install_root / "venv")
@@ -633,27 +767,65 @@ def install_command(args: argparse.Namespace) -> dict:
         )
         cli_command = venv_cli(install_root)
         cli_mode = "managed-venv"
+    progress.update("cli", 1, "Verifying CLI version", fraction=0.9, current_file="foggy-runtime")
     cli_version = command_result([str(cli_command), "--version"], check=True)
     actual_cli_version = version_tuple(cli_version["stdout"])[:3]
     pinned_cli_version = version_tuple(cli_component["version"])[:3]
     version_matches = actual_cli_version >= pinned_cli_version if cli_mode == "external" else actual_cli_version == pinned_cli_version
     if not version_matches:
         raise OnboardingError(f"Unexpected CLI version: {cli_version['stdout']}")
+    progress.update("cli", 1, "CLI ready", fraction=1.0)
 
     launcher_dir = install_root / "launcher"
-    for asset in components["launcher"]["assets"]:
-        verified.append(materialize(asset, launcher_dir / asset["file"], cache_dirs))
+    launcher_assets = components["launcher"]["assets"]
+    for index, asset in enumerate(launcher_assets):
+        progress.update(
+            "launcher", 2, "Downloading and verifying Launcher",
+            fraction=index / len(launcher_assets), current_file=asset["file"],
+            completed_files=index, total_files=len(launcher_assets),
+        )
+        verified.append(materialize(
+            asset, launcher_dir / asset["file"], cache_dirs,
+            progress=progress, progress_phase="launcher", progress_step=2,
+            progress_index=index, progress_total=len(launcher_assets),
+            progress_message="Downloading and verifying Launcher",
+        ))
+        progress.update(
+            "launcher", 2, "Downloading and verifying Launcher",
+            fraction=(index + 1) / len(launcher_assets), current_file=asset["file"],
+            completed_files=index + 1, total_files=len(launcher_assets),
+        )
     if os.name != "nt":
         (launcher_dir / "start-foggy-runtime.sh").chmod(0o755)
+    progress.update("launcher", 2, "Launcher ready", fraction=1.0)
 
     analysis_assets = components["analysisSkill"]["assets"]
-    for asset in analysis_assets:
-        verified.append(materialize(asset, downloads / "skill" / asset["file"], cache_dirs))
+    for index, asset in enumerate(analysis_assets):
+        progress.update(
+            "analysis-skill", 3, "Downloading and verifying analysis Skill",
+            fraction=index / len(analysis_assets), current_file=asset["file"],
+            completed_files=index, total_files=len(analysis_assets),
+        )
+        verified.append(materialize(
+            asset, downloads / "skill" / asset["file"], cache_dirs,
+            progress=progress, progress_phase="analysis-skill", progress_step=3,
+            progress_index=index, progress_total=len(analysis_assets),
+            progress_message="Downloading and verifying analysis Skill",
+        ))
+        progress.update(
+            "analysis-skill", 3, "Downloading and verifying analysis Skill",
+            fraction=(index + 1) / len(analysis_assets), current_file=asset["file"],
+            completed_files=index + 1, total_files=len(analysis_assets),
+        )
     zip_asset = next(item for item in analysis_assets if item["role"] == "zip")
+    progress.update("analysis-skill", 3, "Installing analysis Skill", fraction=0.9, current_file=zip_asset["file"])
     analysis_skill = install_analysis_skill(
         downloads / "skill" / zip_asset["file"], project_root, components["analysisSkill"]["version"], zip_asset["sha256"], args.replace_skill
     )
+    progress.update("analysis-skill", 3, "Analysis Skill ready", fraction=1.0)
+    progress.update("workspace-skills", 4, "Installing onboarding Skill", fraction=0.1)
     onboarding_skill = install_onboarding_skill(project_root)
+    progress.update("workspace-skills", 4, "Workspace Skills ready", fraction=1.0)
     state = {
         "schemaVersion": STATE_SCHEMA,
         "installedAt": now_utc(),
@@ -668,7 +840,10 @@ def install_command(args: argparse.Namespace) -> dict:
         "securityMode": versions["defaults"]["securityMode"],
         "productionReady": False,
     }
+    progress.update("state", 5, "Writing install state", fraction=0.2, current_file="install-state.json")
     atomic_json(install_root / "install-state.json", state)
+    progress.finish()
+    ACTIVE_PROGRESS = None
     return {
         "success": True,
         "schemaVersion": "foggy-deepseek-onboarding-install-result/v1",
@@ -1945,6 +2120,9 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument("--replace-skill", action="store_true")
     install.add_argument("--skip-cli-install", action="store_true")
     install.add_argument("--cli-command")
+    install.add_argument("--progress-file")
+    install.add_argument("--operation-id")
+    install.add_argument("--operation-kind", default="initialize")
     install.add_argument("--dry-run", action="store_true")
     install.set_defaults(handler=install_command)
 
@@ -2104,8 +2282,12 @@ def main() -> None:
             exit_code = 1
         emit(result, exit_code)
     except OnboardingError as exc:
+        if ACTIVE_PROGRESS is not None:
+            ACTIVE_PROGRESS.fail(exc)
         emit({"success": False, "error": {"code": "ONBOARDING_ERROR", "message": str(exc)}, "productionReady": False}, 1)
     except Exception as exc:
+        if ACTIVE_PROGRESS is not None:
+            ACTIVE_PROGRESS.fail(exc)
         emit({"success": False, "error": {"code": "UNEXPECTED_ERROR", "message": str(exc)}, "productionReady": False}, 1)
 
 

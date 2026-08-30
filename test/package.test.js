@@ -9,7 +9,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.0-beta.2')
+  assert.equal(pkg.version, '0.4.0-beta.3')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
   assert.equal(pkg.exports['./client'], './lib/client.js')
@@ -30,7 +30,7 @@ test('documents the pnpm workspace-root install required by DSH rc.2', async () 
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.0-beta.2')
+  assert.equal(versions.packageVersion, '0.4.0-beta.3')
   assert.equal(versions.components.cli.version, '0.1.23')
   assert.equal(versions.components.launcher.version, '0.1.18')
   assert.ok(versions.components.launcher.assets.every((asset) => asset.url && asset.sha256))
@@ -55,4 +55,16 @@ test('rejects Java versions below the Launcher minimum', () => {
   assert.deepEqual(versionParts('java version "12.0.2"'), [12, 0, 2])
   assert.equal(compatible({ available: true, output: 'java version "12.0.2"' }, '17.0').available, false)
   assert.equal(compatible({ available: true, output: 'openjdk version "17.0.12"' }, '17.0').available, true)
+})
+
+test('exposes persistent initialization progress to the gateway and web client', async () => {
+  const gateway = await readFile(join(root, 'lib', 'index.js'), 'utf8')
+  const client = await readFile(join(root, 'lib', 'client.js'), 'utf8')
+  const onboarding = await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'scripts', 'onboarding.py'), 'utf8')
+  assert.match(gateway, /operation-progress\.json/)
+  assert.match(gateway, /--progress-file/)
+  assert.match(client, /role: 'progressbar'/)
+  assert.match(client, /foggy-progress-fill/)
+  assert.match(onboarding, /PROGRESS_SCHEMA = "foggy-deepseek-onboarding-progress\/v1"/)
+  assert.match(onboarding, /--progress-file/)
 })
