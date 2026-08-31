@@ -25,6 +25,10 @@ import zipfile
 STATE_SCHEMA = "foggy-deepseek-onboarding-install/v1"
 RUNTIME_STATE_SCHEMA = "foggy-deepseek-onboarding-runtime/v1"
 ONBOARDING_STATE_SCHEMA = "foggy-deepseek-onboarding-state/v1"
+CONTEXT_SCHEMA = "foggy-deepseek-harness-context/v1"
+MANAGED_SKILL_SCHEMA = "foggy-managed-skill/v1"
+MANAGED_SKILL_MARKER = ".foggy-managed-skill.json"
+LEGACY_SKILL_MARKER = ".foggy-onboarding-install.json"
 CONNECTION_SCHEMA = "foggy-deepseek-connection/v1"
 SEMANTIC_PLAN_SCHEMA = "foggy-deepseek-semantic-plan/v1"
 PROFILE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,62}$")
@@ -331,6 +335,145 @@ def atomic_json(path: Path, payload: dict) -> None:
     os.replace(temporary, path)
 
 
+def skill_tree_digest(root: Path) -> str:
+    """Hash managed Skill content while ignoring generated and management files."""
+    digest = hashlib.sha256()
+    ignored_names = {MANAGED_SKILL_MARKER, LEGACY_SKILL_MARKER}
+    files = sorted(
+        path for path in root.rglob("*")
+        if path.is_file()
+        and path.name not in ignored_names
+        and "__pycache__" not in path.parts
+        and path.suffix != ".pyc"
+    )
+    for path in files:
+        relative = path.relative_to(root).as_posix().encode("utf-8")
+        digest.update(len(relative).to_bytes(4, "big"))
+        digest.update(relative)
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+    return digest.hexdigest()
+
+
+def read_skill_marker(destination: Path) -> dict | None:
+    for name in (MANAGED_SKILL_MARKER, LEGACY_SKILL_MARKER):
+        marker = destination / name
+        if marker.is_file():
+            try:
+                payload = json.loads(marker.read_text(encoding="utf-8"))
+                if isinstance(payload, dict):
+                    return payload
+            except (OSError, json.JSONDecodeError):
+                return None
+    return None
+
+
+def managed_skill_status(destination: Path, kind: str, expected_version: str) -> dict:
+    marker = read_skill_marker(destination)
+    present = (destination / "SKILL.md").is_file()
+    actual_digest = skill_tree_digest(destination) if destination.is_dir() else None
+    marker_digest = marker.get("installedDigest") if marker else None
+    managed = bool(
+        marker
+        and marker.get("schemaVersion") == MANAGED_SKILL_SCHEMA
+        and marker.get("kind") == kind
+    )
+    version = marker.get("componentVersion") if marker else None
+    return {
+        "path": str(destination),
+        "present": present,
+        "markerPresent": bool(marker),
+        "managed": managed,
+        "version": version,
+        "versionMatches": version == expected_version,
+        "integrityValid": bool(marker_digest and actual_digest == marker_digest),
+        "valid": bool(present and managed and version == expected_version and marker_digest and actual_digest == marker_digest),
+    }
+
+
+def write_skill_marker(
+    destination: Path,
+    *,
+    kind: str,
+    package_version: str,
+    component_version: str,
+    source_digest: str,
+    archive_sha256: str | None = None,
+) -> dict:
+    marker = {
+        "schemaVersion": MANAGED_SKILL_SCHEMA,
+        "kind": kind,
+        "managedBy": "@foggy-projects/deepseek-harness-plugin",
+        "packageVersion": package_version,
+        "componentVersion": component_version,
+        "sourceDigest": source_digest,
+        "installedDigest": skill_tree_digest(destination),
+        "installedAt": now_utc(),
+    }
+    if archive_sha256:
+        marker["archiveSha256"] = archive_sha256
+    atomic_json(destination / MANAGED_SKILL_MARKER, marker)
+    legacy = destination / LEGACY_SKILL_MARKER
+    if legacy.is_file():
+        legacy.unlink()
+    return marker
+
+
+def backup_skill(destination: Path, project_root: Path) -> Path:
+    backup_root = project_root / ".foggy" / "onboarding-backups"
+    backup_root.mkdir(parents=True, exist_ok=True)
+    backup = backup_root / f"{destination.name}-{dt.datetime.now().strftime('%Y%m%d-%H%M%S-%f')}"
+    shutil.move(str(destination), str(backup))
+    return backup
+
+
+def project_context_path(project_root: Path) -> Path:
+    return project_root / ".foggy" / "deepseek-harness" / "context.json"
+
+
+def project_relative(path: Path, project_root: Path) -> str:
+    try:
+        return path.resolve(strict=False).relative_to(project_root.resolve(strict=False)).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def write_project_context(state: dict) -> Path:
+    project_root = normalized(state["projectRoot"])
+    install_root = normalized(state["installRoot"])
+    data_root = normalized(state["dataRoot"])
+    context_path = project_context_path(project_root)
+    skills = {}
+    for kind in ("onboarding", "analysis"):
+        item = state["skills"][kind]
+        skill_path = normalized(item["path"])
+        skills[kind] = {
+            "version": item.get("version"),
+            "path": project_relative(skill_path, project_root),
+            "absolutePath": str(skill_path),
+            "markerPath": project_relative(skill_path / MANAGED_SKILL_MARKER, project_root),
+            "managed": bool(item.get("managed")),
+        }
+    payload = {
+        "schemaVersion": CONTEXT_SCHEMA,
+        "managedBy": "@foggy-projects/deepseek-harness-plugin",
+        "packageVersion": state["packageVersion"],
+        "generatedAt": now_utc(),
+        "projectRoot": str(project_root),
+        "installStatePath": str(install_root / "install-state.json"),
+        "runtimeStatePath": str(data_root / "runtime-state.json"),
+        "operationProgressPath": str(data_root / "operation-progress.json"),
+        "cli": state["cli"],
+        "launcher": state["launcher"],
+        "skills": skills,
+        "securityMode": state["securityMode"],
+        "productionReady": False,
+    }
+    atomic_json(context_path, payload)
+    return context_path
+
+
 def read_json_object(path: Path, label: str) -> dict:
     if not path.is_file():
         raise OnboardingError(f"{label} not found: {path}")
@@ -621,22 +764,16 @@ def safe_extract(zip_path: Path, destination: Path) -> None:
         archive.extractall(destination)
 
 
-def install_analysis_skill(zip_path: Path, project_root: Path, version: str, expected_hash: str, replace: bool) -> dict:
+def install_analysis_skill(
+    zip_path: Path,
+    project_root: Path,
+    version: str,
+    expected_hash: str,
+    package_version: str,
+    replace: bool,
+) -> dict:
     skills_root = project_root / ".agents" / "skills"
     destination = skills_root / "foggy-ai-analysis"
-    marker = destination / ".foggy-onboarding-install.json"
-    if destination.exists():
-        if marker.is_file():
-            installed = json.loads(marker.read_text(encoding="utf-8"))
-            if installed.get("archiveSha256") == expected_hash:
-                return {"path": str(destination), "version": version, "action": "kept-matching"}
-        if not replace:
-            raise OnboardingError(f"Analysis Skill already exists and is not managed at {destination}; rerun with --replace-skill to back it up")
-        backup_root = project_root / ".foggy" / "onboarding-backups"
-        backup_root.mkdir(parents=True, exist_ok=True)
-        backup = backup_root / f"foggy-ai-analysis-{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}"
-        shutil.move(str(destination), str(backup))
-    skills_root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="foggy-skill-") as temporary:
         extract_root = Path(temporary)
         safe_extract(zip_path, extract_root)
@@ -644,21 +781,81 @@ def install_analysis_skill(zip_path: Path, project_root: Path, version: str, exp
         if len(candidates) != 1:
             raise OnboardingError(f"Expected exactly one SKILL.md in analysis Skill archive, found {len(candidates)}")
         source = candidates[0].parent
+        source_digest = skill_tree_digest(source)
+        if destination.exists():
+            installed = read_skill_marker(destination)
+            actual_digest = skill_tree_digest(destination)
+            marker_matches = bool(
+                installed
+                and installed.get("schemaVersion") in (MANAGED_SKILL_SCHEMA, "foggy-installed-skill/v1")
+                and installed.get("archiveSha256") == expected_hash
+                and (installed.get("sourceDigest") or installed.get("installedDigest") or actual_digest) == source_digest
+                and actual_digest == source_digest
+            )
+            if marker_matches:
+                marker = write_skill_marker(
+                    destination,
+                    kind="analysis",
+                    package_version=package_version,
+                    component_version=version,
+                    source_digest=source_digest,
+                    archive_sha256=expected_hash,
+                )
+                return {"path": str(destination), "version": version, "digest": marker["installedDigest"], "managed": True, "action": "kept-matching"}
+            if not replace:
+                raise OnboardingError(f"Analysis Skill is missing, modified, or outdated at {destination}; use the plugin Repair action to back it up and restore it")
+            backup_skill(destination, project_root)
+        skills_root.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source, destination)
-    atomic_json(marker, {"schemaVersion": "foggy-installed-skill/v1", "version": version, "archiveSha256": expected_hash})
-    return {"path": str(destination), "version": version, "action": "installed"}
+    marker = write_skill_marker(
+        destination,
+        kind="analysis",
+        package_version=package_version,
+        component_version=version,
+        source_digest=source_digest,
+        archive_sha256=expected_hash,
+    )
+    return {"path": str(destination), "version": version, "digest": marker["installedDigest"], "managed": True, "action": "installed"}
 
 
-def install_onboarding_skill(project_root: Path) -> dict:
+def install_onboarding_skill(project_root: Path, package_version: str, replace: bool) -> dict:
     destination = project_root / ".agents" / "skills" / "foggy-deepseek-onboarding"
     source = skill_root()
+    source_digest = skill_tree_digest(source)
     if source.resolve() == destination.resolve(strict=False):
-        return {"path": str(destination), "action": "already-running-from-target"}
+        return {"path": str(destination), "version": package_version, "digest": source_digest, "managed": True, "action": "already-running-from-target"}
     if destination.exists():
-        return {"path": str(destination), "action": "kept-existing"}
+        marker = read_skill_marker(destination)
+        actual_digest = skill_tree_digest(destination)
+        if (
+            marker
+            and marker.get("schemaVersion") == MANAGED_SKILL_SCHEMA
+            and marker.get("kind") == "onboarding"
+            and actual_digest == source_digest
+            and marker.get("sourceDigest") in (None, source_digest)
+            and marker.get("installedDigest") in (None, source_digest)
+        ):
+            written = write_skill_marker(
+                destination,
+                kind="onboarding",
+                package_version=package_version,
+                component_version=package_version,
+                source_digest=source_digest,
+            )
+            return {"path": str(destination), "version": package_version, "digest": written["installedDigest"], "managed": True, "action": "kept-matching"}
+        if not replace:
+            raise OnboardingError(f"Onboarding Skill is missing, modified, or outdated at {destination}; use the plugin Repair action to back it up and restore it")
+        backup_skill(destination, project_root)
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source, destination)
-    return {"path": str(destination), "action": "installed"}
+    marker = write_skill_marker(
+        destination,
+        kind="onboarding",
+        package_version=package_version,
+        component_version=package_version,
+        source_digest=source_digest,
+    )
+    return {"path": str(destination), "version": package_version, "digest": marker["installedDigest"], "managed": True, "action": "installed"}
 
 
 def read_install_state(install_root: Path, required: bool = True) -> dict | None:
@@ -820,11 +1017,12 @@ def install_command(args: argparse.Namespace) -> dict:
     zip_asset = next(item for item in analysis_assets if item["role"] == "zip")
     progress.update("analysis-skill", 3, "Installing analysis Skill", fraction=0.9, current_file=zip_asset["file"])
     analysis_skill = install_analysis_skill(
-        downloads / "skill" / zip_asset["file"], project_root, components["analysisSkill"]["version"], zip_asset["sha256"], args.replace_skill
+        downloads / "skill" / zip_asset["file"], project_root, components["analysisSkill"]["version"],
+        zip_asset["sha256"], versions["packageVersion"], args.replace_skill,
     )
     progress.update("analysis-skill", 3, "Analysis Skill ready", fraction=1.0)
     progress.update("workspace-skills", 4, "Installing onboarding Skill", fraction=0.1)
-    onboarding_skill = install_onboarding_skill(project_root)
+    onboarding_skill = install_onboarding_skill(project_root, versions["packageVersion"], args.replace_skill)
     progress.update("workspace-skills", 4, "Workspace Skills ready", fraction=1.0)
     state = {
         "schemaVersion": STATE_SCHEMA,
@@ -833,6 +1031,7 @@ def install_command(args: argparse.Namespace) -> dict:
         "installRoot": str(install_root),
         "dataRoot": str(data_root),
         "projectRoot": str(project_root),
+        "contextPath": str(project_context_path(project_root)),
         "cli": {"version": cli_component["version"], "command": str(cli_command), "mode": cli_mode},
         "launcher": {"version": components["launcher"]["version"], "path": str(launcher_dir)},
         "skills": {"onboarding": onboarding_skill, "analysis": analysis_skill},
@@ -842,6 +1041,8 @@ def install_command(args: argparse.Namespace) -> dict:
     }
     progress.update("state", 5, "Writing install state", fraction=0.2, current_file="install-state.json")
     atomic_json(install_root / "install-state.json", state)
+    progress.update("state", 5, "Writing project context", fraction=0.7, current_file=".foggy/deepseek-harness/context.json")
+    context_path = write_project_context(state)
     progress.finish()
     ACTIVE_PROGRESS = None
     return {
@@ -851,6 +1052,7 @@ def install_command(args: argparse.Namespace) -> dict:
         "installRoot": str(install_root),
         "dataRoot": str(data_root),
         "projectRoot": str(project_root),
+        "contextPath": str(context_path),
         "cliVersion": cli_component["version"],
         "launcherVersion": components["launcher"]["version"],
         "analysisSkill": analysis_skill,
@@ -2032,8 +2234,24 @@ def doctor_command(args: argparse.Namespace) -> dict:
             path = launcher_dir / asset["file"]
             launcher_checks.append({"file": asset["file"], "present": path.is_file(), "sha256Valid": path.is_file() and sha256(path) == asset["sha256"]})
     launcher_ok = bool(launcher_checks) and all(item["present"] and item["sha256Valid"] for item in launcher_checks)
-    analysis_skill = project_root / ".agents" / "skills" / "foggy-ai-analysis" / "SKILL.md"
-    onboarding_skill = project_root / ".agents" / "skills" / "foggy-deepseek-onboarding" / "SKILL.md"
+    analysis_skill_root = project_root / ".agents" / "skills" / "foggy-ai-analysis"
+    onboarding_skill_root = project_root / ".agents" / "skills" / "foggy-deepseek-onboarding"
+    analysis_skill = managed_skill_status(analysis_skill_root, "analysis", versions["components"]["analysisSkill"]["version"])
+    onboarding_skill = managed_skill_status(onboarding_skill_root, "onboarding", versions["packageVersion"])
+    context_path = project_context_path(project_root)
+    context = None
+    if context_path.is_file():
+        try:
+            context = json.loads(context_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            context = None
+    context_ok = bool(
+        context
+        and context.get("schemaVersion") == CONTEXT_SCHEMA
+        and context.get("packageVersion") == versions["packageVersion"]
+        and normalized(context.get("projectRoot", "")) == project_root
+        and normalized(context.get("installStatePath", "")) == install_root / "install-state.json"
+    )
     runtime = {"status": "stopped"}
     if state:
         data_root = normalized(state["dataRoot"])
@@ -2047,7 +2265,9 @@ def doctor_command(args: argparse.Namespace) -> dict:
         "java": java_ok,
         "cli": cli_ok,
         "launcher": launcher_ok,
-        "analysisSkill": analysis_skill.is_file(),
+        "analysisSkill": analysis_skill["valid"],
+        "onboardingSkill": onboarding_skill["valid"],
+        "projectContext": context_ok,
     }
     if args.strict_runtime:
         required["runtime"] = runtime["status"] == "running"
@@ -2061,7 +2281,8 @@ def doctor_command(args: argparse.Namespace) -> dict:
         "java": java,
         "cli": cli,
         "launcherAssets": launcher_checks,
-        "skills": {"analysis": str(analysis_skill), "onboarding": str(onboarding_skill), "onboardingPresent": onboarding_skill.is_file()},
+        "skills": {"analysis": analysis_skill, "onboarding": onboarding_skill},
+        "projectContext": {"path": str(context_path), "valid": context_ok},
         "runtime": runtime,
         "environmentPresence": {name: bool(os.environ.get(name)) for name in ("DEEPSEEK_API_KEY", "ALIYUN_TOKEN_PLAN_API_KEY", "FOGGY_RUNTIME_API_AUTH_CODE", "FOGGY_RUNTIME_AUTHORIZATION")},
         "productionReady": False,

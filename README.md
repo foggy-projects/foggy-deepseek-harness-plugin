@@ -8,7 +8,7 @@ only when the user selects **Initialize Foggy**.
 ## Local beta installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.3.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.4.tgz
 ```
 
 Restart `dsh web`, open Settings → Plugins → Foggy Data Analysis, and initialize
@@ -26,6 +26,21 @@ asset-cache directories. Neither variable is required for a normal install.
 
 Database credentials are deliberately outside the ordinary DSH settings
 document. The database and semantic-layer wizard is the next Bundle milestone.
+
+## Managed workspace contract
+
+Initialization writes a non-secret discovery document at
+`.foggy/deepseek-harness/context.json` in the selected project. It points agents
+to the authoritative global install state, the managed CLI's absolute command,
+the Runtime state, and the two workspace Skills. The managed CLI is intentionally
+isolated and does not need to be on `PATH`.
+
+Both `foggy-deepseek-onboarding` and `foggy-ai-analysis` carry a
+`.foggy-managed-skill.json` marker. **Re-download / Repair** verifies their
+managed content, backs up a modified or outdated Skill under
+`.foggy/onboarding-backups`, restores missing content, and regenerates the
+project context. If a Skill is restored while Harness is already running, start
+a new task or restart Harness so its Skill registry can reload it.
 
 ## Linux and WSL2 experience
 
