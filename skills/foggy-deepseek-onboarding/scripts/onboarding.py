@@ -34,6 +34,7 @@ PROFILE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,62}$")
 ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 OPAQUE_PROFILE_PATTERN = re.compile(r"^fop_[a-f0-9]{32}$")
 OPAQUE_REVISION_PATTERN = re.compile(r"^sha256:[a-f0-9]{64}$")
+OPAQUE_PROFILE_SCHEMA = "foggy-runtime-onboarding-profile/v1"
 MODEL_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 
 
@@ -283,11 +284,20 @@ def materialize(
     progress_index: int = 0,
     progress_total: int = 1,
     progress_message: str = "Downloading and verifying asset",
+    replace_corrupt: bool = False,
 ) -> dict:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.is_file():
-        verify_asset(destination, asset["sha256"])
-        return {"file": asset["file"], "path": str(destination), "source": "existing", "sha256": asset["sha256"]}
+        try:
+            verify_asset(destination, asset["sha256"])
+            return {"file": asset["file"], "path": str(destination), "source": "existing", "sha256": asset["sha256"]}
+        except OnboardingError:
+            if not replace_corrupt:
+                raise
+            quarantine = destination.with_name(
+                destination.name + f".corrupt-{dt.datetime.now().strftime('%Y%m%d-%H%M%S-%f')}"
+            )
+            destination.replace(quarantine)
     cached = cached_asset(asset["file"], asset["sha256"], cache_dirs)
     if cached:
         shutil.copy2(cached, destination)
@@ -459,6 +469,153 @@ def configure_profile_store(data_root: Path, *, create: bool = True) -> Path:
         if os.name != "nt":
             destination.chmod(0o700)
     return destination
+
+
+def legacy_profile_stores(destination: Path) -> list[Path]:
+    configured = [
+        normalized(item)
+        for item in os.environ.get("FOGGY_RUNTIME_PROFILE_LEGACY_STORES", "").split(os.pathsep)
+        if item.strip()
+    ]
+    default_legacy = Path(tempfile.gettempdir()) / "foggy-profiles"
+    candidates = [*configured, normalized(default_legacy)]
+    unique: list[Path] = []
+    for candidate in candidates:
+        if candidate == destination or candidate in unique:
+            continue
+        unique.append(candidate)
+    return unique
+
+
+def validate_opaque_profile_document(payload: dict, path: Path) -> dict:
+    allowed = {"schemaVersion", "profileId", "revision", "createdAt", "updatedAt", "connection"}
+    unexpected = sorted(set(payload) - allowed)
+    if unexpected:
+        raise OnboardingError(f"Unsupported opaque profile fields in {path.name}: {', '.join(unexpected)}")
+    if payload.get("schemaVersion") != OPAQUE_PROFILE_SCHEMA:
+        raise OnboardingError(f"Unexpected opaque profile schema in {path.name}")
+    profile_id = payload.get("profileId")
+    revision = payload.get("revision")
+    if not isinstance(profile_id, str) or not OPAQUE_PROFILE_PATTERN.fullmatch(profile_id):
+        raise OnboardingError(f"Invalid opaque profile ID in {path.name}")
+    if path.stem != profile_id:
+        raise OnboardingError(f"Opaque profile filename does not match its ID: {path.name}")
+    if not isinstance(revision, str) or not OPAQUE_REVISION_PATTERN.fullmatch(revision):
+        raise OnboardingError(f"Invalid opaque profile revision in {path.name}")
+    connection = payload.get("connection")
+    if not isinstance(connection, dict):
+        raise OnboardingError(f"Opaque profile connection is missing in {path.name}")
+    allowed_connection = {"name", "type", "jdbcUrl", "username", "passwordEnv", "namespace"}
+    unexpected_connection = sorted(set(connection) - allowed_connection)
+    if unexpected_connection:
+        raise OnboardingError(
+            f"Unsupported opaque connection fields in {path.name}: {', '.join(unexpected_connection)}"
+        )
+    for name in ("name", "type", "jdbcUrl", "namespace"):
+        if not isinstance(connection.get(name), str) or not connection[name].strip():
+            raise OnboardingError(f"Opaque profile connection.{name} is invalid in {path.name}")
+    password_env = connection.get("passwordEnv")
+    if password_env is not None and (
+        not isinstance(password_env, str) or not ENV_NAME_PATTERN.fullmatch(password_env)
+    ):
+        raise OnboardingError(f"Opaque profile passwordEnv is invalid in {path.name}")
+    jdbc_url = connection["jdbcUrl"]
+    if re.search(r"(?i)(?:password|passwd|pwd)\s*=", jdbc_url) or re.search(r"//[^/@:]+:[^/@]+@", jdbc_url):
+        raise OnboardingError(f"Opaque profile embeds a password in jdbcUrl: {path.name}")
+    return payload
+
+
+def profile_migration_inventory(data_root: Path) -> dict:
+    destination = configure_profile_store(data_root, create=False)
+    entries: list[dict] = []
+    for source in legacy_profile_stores(destination):
+        if not source.is_dir():
+            continue
+        for path in sorted(source.glob("fop_*.json")):
+            try:
+                payload = validate_opaque_profile_document(read_json_object(path, "Opaque profile"), path)
+                target = destination / path.name
+                status = "pending"
+                if target.is_file():
+                    existing = validate_opaque_profile_document(read_json_object(target, "Opaque profile"), target)
+                    status = "migrated" if existing == payload else "conflict"
+                entries.append({
+                    "profileId": payload["profileId"],
+                    "revision": payload["revision"],
+                    "source": str(source),
+                    "destination": str(destination),
+                    "status": status,
+                })
+            except OnboardingError as exc:
+                entries.append({
+                    "profileId": path.stem if OPAQUE_PROFILE_PATTERN.fullmatch(path.stem) else None,
+                    "source": str(source),
+                    "destination": str(destination),
+                    "status": "invalid",
+                    "error": str(exc),
+                })
+    return {
+        "schemaVersion": "foggy-deepseek-profile-migration-status/v1",
+        "profileStore": str(destination),
+        "legacyStores": [str(path) for path in legacy_profile_stores(destination)],
+        "entries": entries,
+        "pendingCount": sum(item["status"] == "pending" for item in entries),
+        "conflictCount": sum(item["status"] in {"conflict", "invalid"} for item in entries),
+    }
+
+
+def profile_migration_status_command(args: argparse.Namespace) -> dict:
+    install_root = normalized(args.install_root or default_install_root())
+    install_state = read_install_state(install_root)
+    data_root = normalized(args.data_root or install_state["dataRoot"])
+    return {"success": True, **profile_migration_inventory(data_root), "productionReady": False}
+
+
+def profile_migrate_command(args: argparse.Namespace) -> dict:
+    if not args.approve:
+        raise OnboardingError("Profile migration requires --approve")
+    install_root = normalized(args.install_root or default_install_root())
+    install_state = read_install_state(install_root)
+    data_root = normalized(args.data_root or install_state["dataRoot"])
+    inventory = profile_migration_inventory(data_root)
+    if inventory["conflictCount"]:
+        raise OnboardingError("Legacy profile migration has conflicts or invalid entries; inspect status first")
+    destination = configure_profile_store(data_root)
+    migrated: list[dict] = []
+    for item in inventory["entries"]:
+        if item["status"] != "pending":
+            continue
+        source = normalized(Path(item["source"]) / f"{item['profileId']}.json")
+        payload = validate_opaque_profile_document(read_json_object(source, "Opaque profile"), source)
+        target = destination / source.name
+        atomic_json(target, payload)
+        if os.name != "nt":
+            target.chmod(0o600)
+        if read_json_object(target, "Migrated opaque profile") != payload:
+            target.unlink(missing_ok=True)
+            raise OnboardingError(f"Migrated profile verification failed: {source.name}")
+        backup_root = data_root / "profile-migration-backups" / dt.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        backup_root.mkdir(parents=True, exist_ok=True)
+        if os.name != "nt":
+            backup_root.chmod(0o700)
+        archived = backup_root / (source.name + ".bak")
+        source.replace(archived)
+        if os.name != "nt":
+            archived.chmod(0o600)
+        migrated.append({
+            "profileId": payload["profileId"],
+            "revision": payload["revision"],
+            "destination": str(target),
+            "legacyBackup": str(archived),
+        })
+    return {
+        "success": True,
+        "schemaVersion": "foggy-deepseek-profile-migration/v1",
+        "profileStore": str(destination),
+        "migrated": migrated,
+        "migratedCount": len(migrated),
+        "productionReady": False,
+    }
 
 
 def resolve_profile_name(data_root: Path, requested: str | None) -> str:
@@ -825,6 +982,7 @@ def install_command(args: argparse.Namespace) -> dict:
     data_root = normalized(args.data_root or default_data_root())
     cache_dirs = [normalized(item) for item in args.asset_cache_dir]
     components = versions["components"]
+    repair_component = getattr(args, "repair_component", None)
     assert_managed_root(install_root, "Install root")
     assert_managed_root(data_root, "Data root")
     if install_root == data_root:
@@ -837,6 +995,7 @@ def install_command(args: argparse.Namespace) -> dict:
         "profileStore": str(profile_store),
         "workspaceMode": "dsh-session-cwd",
         "versions": {name: value.get("version") for name, value in components.items()},
+        "repairComponent": repair_component,
         "operations": ["install isolated CLI", "verify Launcher assets", "install global analysis Skill", "write install state"],
         "productionReady": False,
     }
@@ -870,6 +1029,7 @@ def install_command(args: argparse.Namespace) -> dict:
             progress=progress, progress_phase="cli", progress_step=1,
             progress_index=index, progress_total=len(cli_assets),
             progress_message="Downloading and verifying CLI",
+            replace_corrupt=repair_component == "cli",
         ))
         progress.update(
             "cli", 1, "Downloading and verifying CLI",
@@ -925,6 +1085,7 @@ def install_command(args: argparse.Namespace) -> dict:
             progress=progress, progress_phase="launcher", progress_step=2,
             progress_index=index, progress_total=len(launcher_assets),
             progress_message="Downloading and verifying Launcher",
+            replace_corrupt=repair_component == "launcher",
         ))
         progress.update(
             "launcher", 2, "Downloading and verifying Launcher",
@@ -947,6 +1108,7 @@ def install_command(args: argparse.Namespace) -> dict:
             progress=progress, progress_phase="analysis-skill", progress_step=3,
             progress_index=index, progress_total=len(analysis_assets),
             progress_message="Downloading and verifying analysis Skill",
+            replace_corrupt=repair_component == "analysis-skill",
         ))
         progress.update(
             "analysis-skill", 3, "Downloading and verifying analysis Skill",
@@ -957,7 +1119,7 @@ def install_command(args: argparse.Namespace) -> dict:
     progress.update("analysis-skill", 3, "Installing analysis Skill", fraction=0.9, current_file=zip_asset["file"])
     analysis_skill = install_analysis_skill(
         downloads / "skill" / zip_asset["file"], install_root, components["analysisSkill"]["version"],
-        zip_asset["sha256"], versions["packageVersion"], args.replace_skill,
+        zip_asset["sha256"], versions["packageVersion"], args.replace_skill or repair_component == "analysis-skill",
     )
     progress.update("analysis-skill", 3, "Analysis Skill ready", fraction=1.0)
     progress.update("workspace-skills", 4, "Registering native DSH Skills", fraction=0.1)
@@ -1088,8 +1250,61 @@ def runtime_start_command(args: argparse.Namespace) -> dict:
     existing = data_root / "runtime-state.json"
     if existing.is_file():
         prior = json.loads(existing.read_text(encoding="utf-8"))
-        if process_info(int(prior.get("pid", 0)))["running"]:
-            raise OnboardingError(f"Recorded Runtime is already running with PID {prior['pid']}")
+        prior_info = process_info(int(prior.get("pid", 0)))
+        if prior_info["running"]:
+            expected_jar = f"foggy-runtime-launcher-{state['launcher']['version']}.jar"
+            if prior_info.get("commandLine") and expected_jar not in prior_info["commandLine"]:
+                raise OnboardingError(
+                    f"Recorded Runtime PID {prior['pid']} does not match the pinned Launcher"
+                )
+            cli = state["cli"]["command"]
+            namespace = args.namespace or prior.get("namespace") or versions["defaults"]["namespace"]
+            base_url = prior.get("runtimeUrl")
+            if not isinstance(base_url, str) or not base_url:
+                raise OnboardingError("Recorded Runtime does not contain runtimeUrl")
+            wait_result = command_result(
+                [cli, "--base-url", base_url, "--namespace", namespace, "--output", "json", "wait-ready",
+                 "--timeout-seconds", str(args.timeout or versions["defaults"]["readinessTimeoutSeconds"]),
+                 "--interval-seconds", "1"],
+                timeout=(args.timeout or versions["defaults"]["readinessTimeoutSeconds"]) + 30,
+            )
+            wait_payload = parse_json_output(wait_result, "wait-ready")
+            if wait_payload.get("success") is not True:
+                raise OnboardingError("wait-ready returned success=false for recorded Runtime")
+            capabilities = parse_json_output(
+                command_result(
+                    [cli, "--base-url", base_url, "--namespace", namespace, "--output", "json", "capabilities"],
+                    timeout=30,
+                ),
+                "capabilities",
+            )
+            expected_contract = versions["components"]["launcher"]["runtimeApiContract"]
+            if capabilities.get("success") is not True or capabilities.get("runtimeApiVersion") != expected_contract:
+                raise OnboardingError(f"Unexpected Runtime API contract; expected {expected_contract}")
+            if capabilities.get("data", {}).get("securityMode") != versions["defaults"]["securityMode"]:
+                raise OnboardingError("Recorded Runtime did not report the expected dev/test security mode")
+            verified_at = now_utc()
+            identity = {
+                "engine": capabilities.get("engine"),
+                "runtimeApiVersion": capabilities.get("runtimeApiVersion"),
+                "schemaVersion": capabilities.get("data", {}).get("schemaVersion"),
+                "securityMode": capabilities.get("data", {}).get("securityMode"),
+            }
+            return {
+                "success": True,
+                **prior,
+                "identity": identity,
+                "lastVerifiedAt": verified_at,
+                "verification": {
+                    "waitReady": True,
+                    "capabilities": identity,
+                    "persisted": False,
+                    "instruction": "Capture this JSON in the current workspace when fresh verification evidence is required",
+                },
+                "action": "already-running-verified",
+                "resumed": True,
+                "productionReady": False,
+            }
         existing.unlink()
     port = args.port or int(versions["defaults"]["port"])
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
@@ -1834,7 +2049,9 @@ def semantic_verify_command(args: argparse.Namespace) -> dict:
         raise OnboardingError("--query-model must be declared in the registered semantic plan")
     if not args.query_payload:
         raise OnboardingError("--query-payload is required for semantic verification")
-    project_root = normalized(state["projectRoot"])
+    project_root = normalized(getattr(args, "project_root", None) or state["projectRoot"])
+    if not project_root_is_bound(state, project_root):
+        raise OnboardingError("Query projectRoot is not bound to this onboarding profile")
     payload_path = normalized(args.query_payload)
     if not is_child(payload_path, project_root):
         raise OnboardingError("Query payload must stay inside projectRoot")
@@ -1885,7 +2102,20 @@ def semantic_verify_command(args: argparse.Namespace) -> dict:
         queryExecuted=True,
         rowCount=row_count,
         queryPayloadDigest=sha256(payload_path),
+        projectRoot=str(project_root),
     )
+    workspace_verifications = state.setdefault("workspaceVerifications", [])
+    workspace_verifications[:] = [
+        item for item in workspace_verifications
+        if not (item.get("projectRoot") == str(project_root) and item.get("queryModel") == query_model)
+    ]
+    workspace_verifications.append({
+        "projectRoot": str(project_root),
+        "queryModel": query_model,
+        "queryPayloadDigest": sha256(payload_path),
+        "rowCount": row_count,
+        "verifiedAt": now_utc(),
+    })
     state.setdefault("artifacts", {})["semanticVerifyEvidence"] = str(evidence_dir)
     path = write_onboarding_state(data_root, state)
     return {
@@ -1944,8 +2174,59 @@ def onboarding_status_command(args: argparse.Namespace) -> dict:
         "passwordEnv": password_env,
         "passwordEnvPresent": bool(password_env and os.environ.get(password_env)),
         "steps": state["steps"],
+        "projectRoot": state.get("projectRoot"),
+        "workspaceBindings": [str(path) for path in bound_project_roots(state)],
+        "workspaceVerifications": state.get("workspaceVerifications", []),
         "artifacts": state.get("artifacts", {}),
         "next": next_onboarding_action(state),
+        "productionReady": False,
+    }
+
+
+def onboarding_list_command(args: argparse.Namespace) -> dict:
+    install_root = normalized(args.install_root or default_install_root())
+    install_state = read_install_state(install_root)
+    data_root = normalized(args.data_root or install_state["dataRoot"])
+    profiles_dir = data_root / "onboarding" / "profiles"
+    profiles: list[dict] = []
+    ordered_steps = [
+        "planned", "datasourceConfigured", "datasourceVerified", "schemaDiscovered",
+        "semanticDrafted", "semanticValidated", "semanticPublished", "semanticVerified",
+    ]
+    for path in sorted(profiles_dir.glob("*.json")):
+        if not PROFILE_PATTERN.fullmatch(path.stem):
+            continue
+        try:
+            state = read_onboarding_state(data_root, path.stem)
+            steps = state.get("steps", {})
+            completed = sum(steps.get(name, {}).get("status") == "completed" for name in ordered_steps)
+            profiles.append({
+                "profile": state["profile"],
+                "projectRoot": state.get("projectRoot"),
+                "workspaceBindings": [str(item) for item in bound_project_roots(state)],
+                "updatedAt": state.get("updatedAt"),
+                "completedSteps": completed,
+                "totalSteps": len(ordered_steps),
+                "steps": {name: steps.get(name, {"status": "pending"}) for name in ordered_steps},
+                "next": next_onboarding_action(state),
+            })
+        except OnboardingError as exc:
+            profiles.append({
+                "profile": path.stem,
+                "projectRoot": None,
+                "updatedAt": None,
+                "completedSteps": 0,
+                "totalSteps": len(ordered_steps),
+                "steps": {},
+                "next": {"status": "invalid"},
+                "error": str(exc),
+            })
+    profiles.sort(key=lambda item: item.get("updatedAt") or "", reverse=True)
+    return {
+        "success": True,
+        "schemaVersion": "foggy-deepseek-onboarding-list/v1",
+        "profiles": profiles,
+        "profileCount": len(profiles),
         "productionReady": False,
     }
 
@@ -1986,6 +2267,37 @@ def step_completed(state: dict, name: str) -> bool:
     return state.get("steps", {}).get(name, {}).get("status") == "completed"
 
 
+def bound_project_roots(state: dict) -> list[Path]:
+    values = [state.get("projectRoot"), *state.get("workspaceBindings", [])]
+    result: list[Path] = []
+    for value in values:
+        if not isinstance(value, str) or not value:
+            continue
+        path = normalized(value)
+        if path not in result:
+            result.append(path)
+    return result
+
+
+def project_root_is_bound(state: dict, project_root: Path) -> bool:
+    return normalized(project_root) in bound_project_roots(state)
+
+
+def bind_completed_workspace(state: dict, data_root: Path, project_root: Path) -> bool:
+    project_root = normalized(project_root)
+    if project_root_is_bound(state, project_root):
+        return False
+    required = ("datasourceConfigured", "datasourceVerified", "schemaDiscovered", "semanticPublished")
+    if not all(step_completed(state, name) for name in required):
+        raise OnboardingError(
+            "Existing onboarding profile belongs to a different projectRoot and is not complete enough for safe reuse; "
+            "resume from its original DSH workspace or choose a new profile name"
+        )
+    state.setdefault("workspaceBindings", []).append(str(project_root))
+    write_onboarding_state(data_root, state)
+    return True
+
+
 def datasource_run_command(args: argparse.Namespace) -> dict:
     _install_root, install_state, data_root, _runtime_state = onboarding_context(args, require_runtime=True)
     project_root = normalized(args.project_root or Path.cwd())
@@ -2005,16 +2317,14 @@ def datasource_run_command(args: argparse.Namespace) -> dict:
     if existing:
         if existing.get("connection") != requested_connection:
             raise OnboardingError("Existing onboarding profile does not match the requested connection plan")
-        if normalized(existing.get("projectRoot", "")) != project_root:
-            raise OnboardingError(
-                "Existing onboarding profile belongs to a different projectRoot; resume from that DSH workspace "
-                "or choose a new profile name"
-            )
+        adopted = bind_completed_workspace(existing, data_root, project_root)
         plan_result = {
             "success": True,
             "schemaVersion": "foggy-deepseek-onboarding-plan-result/v1",
             "profile": profile,
             "resumed": True,
+            "workspaceAdopted": adopted,
+            "projectRoot": str(project_root),
             "statePath": str(onboarding_state_path(data_root, profile)),
             "next": next_onboarding_action(existing),
             "productionReady": False,
@@ -2119,8 +2429,8 @@ def datasource_run_command(args: argparse.Namespace) -> dict:
     }
 
 
-def semantic_plan_snapshot(state: dict, plan: dict) -> tuple[Path, dict, bool]:
-    project_root = normalized(state["projectRoot"])
+def semantic_plan_snapshot(state: dict, plan: dict, project_root: Path | None = None) -> tuple[Path, dict, bool]:
+    project_root = normalized(project_root or state["projectRoot"])
     draft_dir = normalized(project_root / plan["draftDir"])
     if not is_child(draft_dir, project_root) or draft_dir == project_root:
         raise OnboardingError("draftDir must stay inside projectRoot and cannot equal it")
@@ -2142,6 +2452,22 @@ def published_digest_matches(state: dict, digest: str) -> bool:
     return published.get("status") == "completed" and published.get("digest") == digest
 
 
+def workspace_query_verification(state: dict, project_root: Path, query_model: str, digest: str) -> dict | None:
+    requested_root = str(normalized(project_root))
+    candidates = list(state.get("workspaceVerifications", []))
+    legacy = state.get("steps", {}).get("semanticVerified", {})
+    if legacy.get("status") == "completed" and legacy.get("projectRoot"):
+        candidates.append(legacy)
+    for item in candidates:
+        if (
+            item.get("projectRoot") == requested_root
+            and item.get("queryModel") == query_model
+            and item.get("queryPayloadDigest") == digest
+        ):
+            return item
+    return None
+
+
 def semantic_run_command(args: argparse.Namespace) -> dict:
     approved_plan = validate_semantic_plan(read_json_object(normalized(args.semantic_plan), "Semantic plan"))
     if not approved_plan.get("profile"):
@@ -2152,7 +2478,11 @@ def semantic_run_command(args: argparse.Namespace) -> dict:
     profile_args = argparse.Namespace(**vars(args))
     profile_args.profile = profile
     state, _install_state, _data_root, _runtime_state = require_profile(profile_args, require_runtime=True)
-    project_root = normalized(state["projectRoot"])
+    project_root = normalized(getattr(args, "project_root", None) or state["projectRoot"])
+    if not project_root_is_bound(state, project_root):
+        raise OnboardingError(
+            "Current projectRoot is not bound to this completed profile; run onboard-datasource-run from this workspace first"
+        )
     payload_path = normalized(args.query_payload)
     if not is_child(payload_path, project_root):
         raise OnboardingError(
@@ -2171,8 +2501,13 @@ def semantic_run_command(args: argparse.Namespace) -> dict:
     evidence_dir = composite_evidence_dir(project_root, profile, str(project_root / contract_evidence) if contract_evidence else args.evidence_dir)
     files: list[str] = []
 
-    _draft_dir, manifest, draft_matches = semantic_plan_snapshot(state, approved_plan)
+    _draft_dir, manifest, draft_matches = semantic_plan_snapshot(state, approved_plan, project_root)
     published_matches = published_digest_matches(state, manifest["digest"])
+    if normalized(state["projectRoot"]) != project_root and not published_matches:
+        raise OnboardingError(
+            "A secondary workspace may reuse an identical published semantic layer but cannot replace it; "
+            "publish changes from the original projectRoot or choose a new profile"
+        )
     if draft_matches or published_matches:
         drafted = resumed_phase(profile, "semanticDrafted", digest=manifest["digest"])
     else:
@@ -2265,13 +2600,9 @@ def semantic_run_command(args: argparse.Namespace) -> dict:
         ))
     save_composite_result(evidence_dir, "11-semantic-publish-apply.json", published, files)
     state = read_onboarding_state(normalized(state["dataRoot"]), profile)
-    verified_step = state.get("steps", {}).get("semanticVerified", {})
     payload_digest = sha256(payload_path)
-    if (
-        verified_step.get("status") == "completed"
-        and verified_step.get("queryModel") == declared_query_model
-        and verified_step.get("queryPayloadDigest") == payload_digest
-    ):
+    verified_step = workspace_query_verification(state, project_root, declared_query_model, payload_digest)
+    if verified_step:
         resumed = resumed_phase(
             profile,
             "semanticVerified",
@@ -2307,6 +2638,7 @@ def semantic_run_command(args: argparse.Namespace) -> dict:
         profile=profile,
         query_model=declared_query_model,
         query_payload=args.query_payload,
+        project_root=str(project_root),
         execute=False,
     ))
     save_composite_result(evidence_dir, "12-query-validate.json", query_validated, files)
@@ -2330,6 +2662,7 @@ def semantic_run_command(args: argparse.Namespace) -> dict:
         profile=profile,
         query_model=declared_query_model,
         query_payload=args.query_payload,
+        project_root=str(project_root),
         execute=True,
     ))
     save_composite_result(evidence_dir, "13-query-execute.json", executed, files)
@@ -2464,6 +2797,7 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument("--project-root")
     install.add_argument("--asset-cache-dir", action="append", default=[])
     install.add_argument("--replace-skill", action="store_true")
+    install.add_argument("--repair-component", choices=("cli", "launcher", "analysis-skill"))
     install.add_argument("--skip-cli-install", action="store_true")
     install.add_argument("--cli-command")
     install.add_argument("--progress-file")
@@ -2516,6 +2850,22 @@ def build_parser() -> argparse.ArgumentParser:
     resume.add_argument("--profile")
     resume.set_defaults(handler=onboarding_resume_command)
 
+    onboarding_list = sub.add_parser("onboard-list")
+    onboarding_list.add_argument("--install-root")
+    onboarding_list.add_argument("--data-root")
+    onboarding_list.set_defaults(handler=onboarding_list_command)
+
+    migration_status = sub.add_parser("profile-migration-status")
+    migration_status.add_argument("--install-root")
+    migration_status.add_argument("--data-root")
+    migration_status.set_defaults(handler=profile_migration_status_command)
+
+    migrate = sub.add_parser("profile-migrate")
+    migrate.add_argument("--install-root")
+    migrate.add_argument("--data-root")
+    migrate.add_argument("--approve", action="store_true")
+    migrate.set_defaults(handler=profile_migrate_command)
+
     datasource_run = sub.add_parser("onboard-datasource-run")
     datasource_run.add_argument("--install-root")
     datasource_run.add_argument("--data-root")
@@ -2536,6 +2886,7 @@ def build_parser() -> argparse.ArgumentParser:
     semantic_run = sub.add_parser("onboard-semantic-run")
     semantic_run.add_argument("--install-root")
     semantic_run.add_argument("--data-root")
+    semantic_run.add_argument("--project-root")
     semantic_run.add_argument("--profile")
     semantic_run.add_argument("--semantic-plan", required=True)
     semantic_run.add_argument("--query-payload", required=True)
@@ -2602,6 +2953,7 @@ def build_parser() -> argparse.ArgumentParser:
     semantic_verify = sub.add_parser("semantic-verify")
     semantic_verify.add_argument("--install-root")
     semantic_verify.add_argument("--data-root")
+    semantic_verify.add_argument("--project-root")
     semantic_verify.add_argument("--profile")
     semantic_verify.add_argument("--query-model")
     semantic_verify.add_argument("--query-payload", required=True)

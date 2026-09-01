@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+import json
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -116,6 +117,88 @@ class OnboardingUnitTests(unittest.TestCase):
                 with self.assertRaisesRegex(onboarding.OnboardingError, "inside projectRoot"):
                     onboarding.semantic_run_command(args)
                 draft.assert_not_called()
+
+    def test_legacy_profile_inventory_exposes_only_public_migration_metadata(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            data_root = root / "state"
+            legacy = root / "legacy"
+            legacy.mkdir()
+            profile_id = "fop_" + "a" * 32
+            payload = {
+                "schemaVersion": onboarding.OPAQUE_PROFILE_SCHEMA,
+                "profileId": profile_id,
+                "revision": "sha256:" + "b" * 64,
+                "createdAt": "2026-09-01T00:00:00Z",
+                "updatedAt": "2026-09-01T00:00:00Z",
+                "connection": {
+                    "name": "tms-mysql",
+                    "type": "mysql",
+                    "jdbcUrl": "jdbc:mysql://127.0.0.1/tms",
+                    "username": "tms",
+                    "passwordEnv": "TMS_DB_PW",
+                    "namespace": "tms",
+                },
+            }
+            (legacy / f"{profile_id}.json").write_text(json.dumps(payload), encoding="utf-8")
+            with patch.dict(os.environ, {
+                "FOGGY_RUNTIME_PROFILE_STORE": str(data_root / "cli-profiles"),
+                "FOGGY_RUNTIME_PROFILE_LEGACY_STORES": str(legacy),
+            }):
+                inventory = onboarding.profile_migration_inventory(data_root)
+                with patch.object(onboarding, "read_install_state", return_value={"dataRoot": str(data_root)}):
+                    result = onboarding.profile_migrate_command(type("Args", (), {
+                        "approve": True,
+                        "install_root": None,
+                        "data_root": str(data_root),
+                    })())
+            self.assertEqual(inventory["pendingCount"], 1)
+            self.assertEqual(inventory["entries"][0]["profileId"], profile_id)
+            self.assertNotIn("connection", inventory["entries"][0])
+            self.assertNotIn("jdbcUrl", json.dumps(inventory))
+            self.assertEqual(result["migratedCount"], 1)
+            self.assertTrue(Path(result["migrated"][0]["destination"]).is_file())
+            self.assertTrue(Path(result["migrated"][0]["legacyBackup"]).is_file())
+            self.assertFalse((legacy / f"{profile_id}.json").exists())
+
+    def test_completed_profile_can_bind_an_additional_workspace(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            data_root = root / "state"
+            original = root / "original"
+            secondary = root / "secondary"
+            original.mkdir()
+            secondary.mkdir()
+            state = {
+                "schemaVersion": onboarding.ONBOARDING_STATE_SCHEMA,
+                "profile": "tms",
+                "dataRoot": str(data_root.resolve()),
+                "projectRoot": str(original.resolve()),
+                "steps": {
+                    name: {"status": "completed"}
+                    for name in ("datasourceConfigured", "datasourceVerified", "schemaDiscovered", "semanticPublished")
+                },
+            }
+            adopted = onboarding.bind_completed_workspace(state, data_root.resolve(), secondary.resolve())
+            self.assertTrue(adopted)
+            self.assertTrue(onboarding.project_root_is_bound(state, secondary.resolve()))
+            self.assertFalse(onboarding.bind_completed_workspace(state, data_root.resolve(), secondary.resolve()))
+
+    def test_query_verification_is_scoped_to_the_workspace(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            first = root / "one"
+            second = root / "two"
+            state = {
+                "workspaceVerifications": [{
+                    "projectRoot": str(first.resolve()),
+                    "queryModel": "OrderQuery",
+                    "queryPayloadDigest": "abc",
+                    "rowCount": 3,
+                }]
+            }
+            self.assertIsNotNone(onboarding.workspace_query_verification(state, first, "OrderQuery", "abc"))
+            self.assertIsNone(onboarding.workspace_query_verification(state, second, "OrderQuery", "abc"))
 
 
 if __name__ == "__main__":

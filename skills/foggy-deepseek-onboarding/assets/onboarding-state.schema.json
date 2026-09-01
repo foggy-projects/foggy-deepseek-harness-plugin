@@ -13,6 +13,26 @@
     "installRoot": {"type": "string"},
     "dataRoot": {"type": "string"},
     "projectRoot": {"type": "string"},
+    "workspaceBindings": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "workspaceVerifications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["projectRoot", "queryModel", "queryPayloadDigest", "verifiedAt"],
+        "properties": {
+          "projectRoot": {"type": "string"},
+          "queryModel": {"type": "string"},
+          "queryPayloadDigest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "rowCount": {"type": ["integer", "null"], "minimum": 0},
+          "verifiedAt": {"type": "string", "format": "date-time"}
+        },
+        "additionalProperties": false
+      }
+    },
     "runtime": {"type": "object"},
     "connection": {"$ref": "connection.schema.json"},
     "semantic": {"type": "object"},

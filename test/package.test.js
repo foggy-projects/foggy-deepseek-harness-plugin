@@ -9,7 +9,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.0-beta.6')
+  assert.equal(pkg.version, '0.4.0-beta.7')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
   assert.equal(pkg.exports['./client'], './lib/client.js')
@@ -25,13 +25,13 @@ test('bundle patch mounts the dual-face Foggy package', async () => {
 test('documents the pnpm workspace-root install required by DSH rc.2', async () => {
   const readme = await readFile(join(root, 'README.md'), 'utf8')
   assert.match(readme, /dsh plugin --profile web add --workspace-root/)
-  assert.match(readme, /0\.4\.0-beta\.6\.tgz/)
+  assert.match(readme, /0\.4\.0-beta\.7\.tgz/)
   assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@beta/)
 })
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.0-beta.6')
+  assert.equal(versions.packageVersion, '0.4.0-beta.7')
   assert.equal(versions.components.cli.version, '0.1.23')
   assert.equal(versions.components.launcher.version, '0.1.18')
   assert.ok(versions.components.launcher.assets.every((asset) => asset.url && asset.sha256))
@@ -91,4 +91,18 @@ test('registers Skills natively and keeps managed analysis assets global', async
   assert.match(skill, /absence of `foggy-runtime` from\s+`PATH` is not evidence/)
   assert.match(skill, /current DSH session workspace as the authoritative `projectRoot`/)
   assert.match(skill, /do not remove a successfully\s+published bundle/)
+})
+
+test('exposes public-beta recovery, diagnostics, and onboarding progress controls', async () => {
+  const gateway = await readFile(join(root, 'lib', 'index.js'), 'utf8')
+  const client = await readFile(join(root, 'lib', 'client.js'), 'utf8')
+  const onboarding = await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'scripts', 'onboarding.py'), 'utf8')
+  assert.match(gateway, /repairCli/)
+  assert.match(gateway, /migrateProfiles/)
+  assert.match(gateway, /foggy-deepseek-diagnostics\/v1/)
+  assert.match(client, /onboardingPanel/)
+  assert.match(client, /profileMigrationPending/)
+  assert.match(onboarding, /profile-migration-status/)
+  assert.match(onboarding, /already-running-verified/)
+  assert.match(onboarding, /workspaceBindings/)
 })

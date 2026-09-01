@@ -22,7 +22,7 @@ copy this Skill into the current workspace.
   its absolute command in the global install state.
 - Do not independently download or reinstall the CLI. If the global install state, managed marker, or
   analysis Skill is missing or invalid, ask the user to open the Foggy plugin settings and use
-  **Re-download / Repair**. Repair restores the global managed analysis Skill and invalidates the
+  the matching component repair action. Repair restores managed components and invalidates the
   native DSH Skill catalog. Reinstall or upgrade the plugin itself to restore this bundled Skill.
 - Treat the current DSH session workspace as the authoritative `projectRoot` for the whole onboarding
   run. Do not redirect semantic drafts or contracts to a different repository merely because another
@@ -75,7 +75,9 @@ For every new-database onboarding session, this Skill is the orchestration autho
    plugin's Repair action. Use the matching install script only when the plugin UI is unavailable;
    use `--dry-run` first when paths or permissions are uncertain.
 3. Run `runtime-start` and require successful `wait-ready` plus `capabilities`. Record engine,
-   Runtime API version, schema version, security mode, URL, namespace, PID, and evidence path.
+   Runtime API version, schema version, security mode, URL, namespace, PID, and evidence path. If the
+   recorded Runtime is already running, `runtime-start` verifies and reuses it instead of starting a
+   second process.
 4. Load `foggy-ai-analysis` from the native DSH Skill registry. Do not require a workspace copy.
 5. For a new business database, read [references/onboarding-workflow.md](references/onboarding-workflow.md)
    and prefer its two composite `onboard-datasource-run` / `onboard-semantic-run` commands. Require the
@@ -84,6 +86,9 @@ For every new-database onboarding session, this Skill is the orchestration autho
    (`<dataRoot>/cli-profiles`), never `/tmp`. Accept only the opaque profile
    ID, exact revision, datasource name/type, and namespace; never request JDBC URL, username,
    password, or password environment-variable name in Harness.
+   If plugin settings report a legacy temporary profile, use the explicit migration action before
+   onboarding. It moves only validated connection metadata and environment-variable references; it
+   never copies a password value and leaves a recoverable private backup below the Foggy data root.
 6. After schema discovery, use `foggy-ai-analysis` only to author TM/QM files in the standard project-local
    draft directory. Register, validate, publish, and verify them through this Skill's wrapper using the deterministic commands in
    [references/onboarding-workflow.md](references/onboarding-workflow.md). Do not publish, prune, replace
@@ -113,6 +118,14 @@ Composite commands are checkpointed and idempotent: a retry skips completed data
 publication, and verification phases when the approved contract and draft digest are unchanged. Fix a
 query payload in place and rerun the same semantic composite command; do not remove a successfully
 published bundle merely to recover from a later query-validation failure.
+
+An already-completed profile may be reused from another DSH workspace when the approved connection
+contract is byte-for-byte equivalent. Run the datasource composite in the new workspace first; it adds
+that workspace as a non-destructive binding and reuses datasource/schema checkpoints. Then pass the
+current workspace explicitly as `--project-root` to the semantic composite. A secondary workspace may
+reuse an identical published semantic digest and run its own bounded verification query, but it cannot
+replace the published semantic layer; changes must be published from the original workspace or a new
+profile.
 
 Keep user business data separate from the sales-drop SQLite demo. Prefer a read-only database account,
 opaque CLI profile references, and bounded query limits.

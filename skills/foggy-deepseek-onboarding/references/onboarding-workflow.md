@@ -33,6 +33,12 @@ The wrapper defaults `FOGGY_RUNTIME_PROFILE_STORE` to the private persistent dir
 `<dataRoot>/cli-profiles`. An explicit operator-provided value still wins. Do not use `/tmp` for a profile
 that must survive a WSL or Harness restart.
 
+If plugin settings detect profiles in the legacy temporary store, use **Move to persistent store**.
+Migration validates the opaque profile schema, rejects embedded passwords and conflicts, writes the
+destination with private permissions, verifies it, and moves the legacy JSON to a recoverable private
+backup below the Foggy data root.
+Do not manually copy or edit opaque profile JSON.
+
 Treat every user-supplied identifier and bound as immutable input: profile, datasource, namespace,
 models directory, bundle name, TM/QM name, query fields, and limit. Do not swap in demo names, add
 fields, raise the limit, or introduce replacement flags. If one of these inputs is missing, pause for
@@ -52,11 +58,13 @@ For Harness-driven onboarding, use the two composite commands below. Each writes
 evidence internally and refuses to cross an unapproved mutation gate:
 
 ```text
-onboard-datasource-run --connection-file <approved-json> \
+onboard-datasource-run --project-root <current-session-workspace> \
+  --connection-file <approved-json> \
   --approve-configure --approve-bind --include-indexes
 
 # After authoring the registered TM/QM draft from schema metadata:
-onboard-semantic-run --semantic-plan <approved-json> --query-payload <approved-json> \
+onboard-semantic-run --project-root <current-session-workspace> \
+  --semantic-plan <approved-json> --query-payload <approved-json> \
   --approve-validate --approve-publish --approve-execute
 ```
 
@@ -69,6 +77,12 @@ registering the same bundle twice. If query validation fails after publication, 
 payload and rerun `onboard-semantic-run`; it resumes at query verification and leaves the active bundle in
 place. A same-name datasource is accepted idempotently only when its public name and database type match
 the approved plan; otherwise replacement still requires explicit approval.
+
+When a completed profile already belongs to another workspace, the datasource composite may add the
+current workspace as a binding only if the approved connection contract is identical and the datasource,
+schema, and semantic publication checkpoints are complete. The semantic composite then accepts the same
+published draft digest from the bound workspace and performs a workspace-specific bounded verification
+query. It refuses semantic replacement from the secondary workspace.
 
 The granular commands below remain available for manual troubleshooting and resumption. Do not expand
 the composite commands into this list during a normal Harness turn.
@@ -85,8 +99,8 @@ semantic-validate --profile <profile>
 semantic-validate --profile <profile> --apply
 semantic-publish --profile <profile>
 semantic-publish --profile <profile> --apply
-semantic-verify --profile <profile> --query-payload <json>
-semantic-verify --profile <profile> --query-payload <json> --execute
+semantic-verify --profile <profile> --project-root <current-session-workspace> --query-payload <json>
+semantic-verify --profile <profile> --project-root <current-session-workspace> --query-payload <json> --execute
 onboard-status --profile <profile>
 ```
 
