@@ -24,6 +24,12 @@ copy this Skill into the current workspace.
   analysis Skill is missing or invalid, ask the user to open the Foggy plugin settings and use
   **Re-download / Repair**. Repair restores the global managed analysis Skill and invalidates the
   native DSH Skill catalog. Reinstall or upgrade the plugin itself to restore this bundled Skill.
+- Treat the current DSH session workspace as the authoritative `projectRoot` for the whole onboarding
+  run. Do not redirect semantic drafts or contracts to a different repository merely because another
+  Skill or example was found there. Place non-secret contracts below
+  `<projectRoot>/.foggy/onboarding-contracts/<profile>/`, drafts below
+  `<projectRoot>/.foggy/onboarding-drafts/<profile>/`, and published files below the approved
+  project-relative `modelsDir`.
 
 ## Mandatory orchestration boundary
 
@@ -46,6 +52,9 @@ For every new-database onboarding session, this Skill is the orchestration autho
 - Never read query-execution evidence back into the conversation. Report only validation state,
   execution state, row count, and evidence path; do not report row values or generated SQL containing
   business literals.
+- Prefer one composite command per approval boundary. Do not inspect this Skill's Python implementation
+  or the CLI package source during a normal run; use the documented command contract and inspect code
+  only after a structured wrapper error requires troubleshooting.
 
 ## Boundaries
 
@@ -70,10 +79,12 @@ For every new-database onboarding session, this Skill is the orchestration autho
 4. Load `foggy-ai-analysis` from the native DSH Skill registry. Do not require a workspace copy.
 5. For a new business database, read [references/onboarding-workflow.md](references/onboarding-workflow.md)
    and prefer its two composite `onboard-datasource-run` / `onboard-semantic-run` commands. Require the
-   trusted operator to create the private CLI profile outside Harness. Accept only the opaque profile
+   trusted operator to create the private CLI profile outside Harness. Unless the operator explicitly
+   overrides it, use the persistent profile store reported by the wrapper under the Foggy data root
+   (`<dataRoot>/cli-profiles`), never `/tmp`. Accept only the opaque profile
    ID, exact revision, datasource name/type, and namespace; never request JDBC URL, username,
    password, or password environment-variable name in Harness.
-6. After schema discovery, use `foggy-ai-analysis` only to author TM/QM files in a separate project-local
+6. After schema discovery, use `foggy-ai-analysis` only to author TM/QM files in the standard project-local
    draft directory. Register, validate, publish, and verify them through this Skill's wrapper using the deterministic commands in
    [references/onboarding-workflow.md](references/onboarding-workflow.md). Do not publish, prune, replace
    a bundle, or execute a business-data query without the matching explicit flag and user approval.
@@ -97,6 +108,11 @@ query validate -> query execute -> interpretation
 In DeepSeek Harness, do not expand the composite onboarding commands back into these individual CLI
 operations. This order documents what the wrapper enforces internally and becomes a direct CLI workflow
 only after onboarding is complete.
+
+Composite commands are checkpointed and idempotent: a retry skips completed datasource, validation,
+publication, and verification phases when the approved contract and draft digest are unchanged. Fix a
+query payload in place and rerun the same semantic composite command; do not remove a successfully
+published bundle merely to recover from a later query-validation failure.
 
 Keep user business data separate from the sales-drop SQLite demo. Prefer a read-only database account,
 opaque CLI profile references, and bounded query limits.

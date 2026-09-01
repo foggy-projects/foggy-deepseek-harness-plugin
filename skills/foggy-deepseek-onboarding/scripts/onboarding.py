@@ -448,6 +448,33 @@ def onboarding_state_path(data_root: Path, profile: str) -> Path:
     return data_root / "onboarding" / "profiles" / f"{safe_profile(profile)}.json"
 
 
+def configure_profile_store(data_root: Path, *, create: bool = True) -> Path:
+    """Keep opaque CLI profiles in the persistent, private Foggy data root by default."""
+    configured = os.environ.get("FOGGY_RUNTIME_PROFILE_STORE")
+    destination = normalized(configured) if configured else data_root / "cli-profiles"
+    if not configured:
+        os.environ["FOGGY_RUNTIME_PROFILE_STORE"] = str(destination)
+    if create:
+        destination.mkdir(parents=True, exist_ok=True)
+        if os.name != "nt":
+            destination.chmod(0o700)
+    return destination
+
+
+def resolve_profile_name(data_root: Path, requested: str | None) -> str:
+    if requested:
+        return safe_profile(requested)
+    profiles_dir = data_root / "onboarding" / "profiles"
+    candidates = sorted(path.stem for path in profiles_dir.glob("*.json") if PROFILE_PATTERN.fullmatch(path.stem))
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        return "default"
+    raise OnboardingError(
+        "Multiple onboarding profiles exist; pass --profile explicitly: " + ", ".join(candidates)
+    )
+
+
 def read_onboarding_state(data_root: Path, profile: str, required: bool = True) -> dict | None:
     path = onboarding_state_path(data_root, profile)
     if not path.is_file():
@@ -802,10 +829,12 @@ def install_command(args: argparse.Namespace) -> dict:
     assert_managed_root(data_root, "Data root")
     if install_root == data_root:
         raise OnboardingError("Install root and data root must be different")
+    profile_store = normalized(os.environ.get("FOGGY_RUNTIME_PROFILE_STORE") or data_root / "cli-profiles")
     plan = {
         "schemaVersion": "foggy-deepseek-onboarding-plan/v1",
         "installRoot": str(install_root),
         "dataRoot": str(data_root),
+        "profileStore": str(profile_store),
         "workspaceMode": "dsh-session-cwd",
         "versions": {name: value.get("version") for name, value in components.items()},
         "operations": ["install isolated CLI", "verify Launcher assets", "install global analysis Skill", "write install state"],
@@ -813,6 +842,7 @@ def install_command(args: argparse.Namespace) -> dict:
     }
     if args.dry_run:
         return {"success": True, "dryRun": True, "plan": plan}
+    profile_store = configure_profile_store(data_root)
     progress = ProgressReporter(
         getattr(args, "progress_file", None),
         getattr(args, "operation_id", None),
@@ -945,6 +975,7 @@ def install_command(args: argparse.Namespace) -> dict:
         "packageVersion": versions["packageVersion"],
         "installRoot": str(install_root),
         "dataRoot": str(data_root),
+        "profileStore": str(profile_store),
         "workspaceMode": "dsh-session-cwd",
         "cli": {"version": cli_component["version"], "command": str(cli_command), "mode": cli_mode},
         "launcher": {"version": components["launcher"]["version"], "path": str(launcher_dir)},
@@ -1163,6 +1194,7 @@ def onboarding_context(args: argparse.Namespace, require_runtime: bool = False) 
     install_state = read_install_state(install_root)
     data_root = normalized(args.data_root or install_state["dataRoot"])
     assert_managed_root(data_root, "Data root")
+    configure_profile_store(data_root, create=False)
     runtime_state_path = data_root / "runtime-state.json"
     runtime_state = read_json_object(runtime_state_path, "Runtime state") if runtime_state_path.is_file() else None
     if runtime_state and runtime_state.get("schemaVersion") != RUNTIME_STATE_SCHEMA:
@@ -1220,6 +1252,28 @@ def require_opaque_profile_cli(install_state: dict) -> None:
         raise OnboardingError(
             "Opaque datasource onboarding requires foggy-runtime-cli 0.1.23+ with the profiles command"
         )
+
+
+def datasource_entries(payload: dict) -> list[dict]:
+    for item in nested_data_objects(payload):
+        entries = item.get("datasources")
+        if isinstance(entries, list):
+            return [entry for entry in entries if isinstance(entry, dict)]
+    return []
+
+
+def matching_datasource(payload: dict, connection: dict) -> dict | None:
+    expected_name = connection["name"]
+    expected_type = connection["type"].lower()
+    if expected_type == "postgresql":
+        expected_type = "postgres"
+    for entry in datasource_entries(payload):
+        entry_type = str(entry.get("type", "")).lower()
+        if entry_type == "postgresql":
+            entry_type = "postgres"
+        if entry.get("name") == expected_name and entry_type == expected_type:
+            return entry
+    return None
 
 
 def onboarding_plan_command(args: argparse.Namespace) -> dict:
@@ -1283,7 +1337,9 @@ def onboarding_plan_command(args: argparse.Namespace) -> dict:
 
 def require_profile(args: argparse.Namespace, require_runtime: bool = False) -> tuple[dict, dict, Path, dict | None]:
     _install_root, install_state, data_root, runtime_state = onboarding_context(args, require_runtime=require_runtime)
-    state = read_onboarding_state(data_root, safe_profile(args.profile))
+    profile = resolve_profile_name(data_root, getattr(args, "profile", None))
+    args.profile = profile
+    state = read_onboarding_state(data_root, profile)
     if normalized(state["installRoot"]) != normalized(install_state["installRoot"]):
         raise OnboardingError("Onboarding profile belongs to a different install root")
     return state, install_state, data_root, runtime_state
@@ -1329,10 +1385,31 @@ def datasource_configure_command(args: argparse.Namespace) -> dict:
         label = "datasources add"
     if args.replace:
         command.append("--replace")
-    result = redact_connection_material(
-        cli_json(install_state, runtime_state, connection["namespace"], command, label)
-    )
-    mark_step(state, "datasourceConfigured", "completed", replace=args.replace)
+    already_present = False
+    try:
+        result = redact_connection_material(
+            cli_json(install_state, runtime_state, connection["namespace"], command, label)
+        )
+    except OnboardingError as exc:
+        if "DATASOURCE_ALREADY_EXISTS" not in str(exc):
+            raise
+        listed = cli_json(
+            install_state, runtime_state, connection["namespace"], ["datasources", "list"], "datasources list"
+        )
+        existing = matching_datasource(listed, connection)
+        if existing is None:
+            raise OnboardingError(
+                f"Datasource {connection['name']} already exists but its public type does not match the approved plan; "
+                "do not replace it without explicit approval"
+            ) from exc
+        already_present = True
+        result = {
+            "success": True,
+            "idempotent": True,
+            "status": "already-present",
+            "dataSource": redact_connection_material(existing),
+        }
+    mark_step(state, "datasourceConfigured", "completed", replace=args.replace, alreadyPresent=already_present)
     path = write_onboarding_state(data_root, state)
     return {
         "success": True,
@@ -1340,6 +1417,7 @@ def datasource_configure_command(args: argparse.Namespace) -> dict:
         "profile": state["profile"],
         "statePath": str(path),
         "dataSource": connection["name"],
+        "alreadyPresent": already_present,
         "runtime": result,
         "next": "run datasource-verify; add --bind to approve namespace binding",
         "productionReady": False,
@@ -1798,7 +1876,16 @@ def semantic_verify_command(args: argparse.Namespace) -> dict:
     )
     atomic_json(evidence_dir / "query-execute.json", executed)
     row_count = response_row_count(executed)
-    mark_step(state, "semanticVerified", "completed", queryModel=query_model, queryValidated=True, queryExecuted=True)
+    mark_step(
+        state,
+        "semanticVerified",
+        "completed",
+        queryModel=query_model,
+        queryValidated=True,
+        queryExecuted=True,
+        rowCount=row_count,
+        queryPayloadDigest=sha256(payload_path),
+    )
     state.setdefault("artifacts", {})["semanticVerifyEvidence"] = str(evidence_dir)
     path = write_onboarding_state(data_root, state)
     return {
@@ -1818,14 +1905,15 @@ def semantic_verify_command(args: argparse.Namespace) -> dict:
 
 
 def next_onboarding_action(state: dict) -> dict:
+    profile_flag = f" --profile {state['profile']}"
     ordered = [
-        ("datasourceConfigured", "datasource-configure --apply"),
-        ("datasourceVerified", "datasource-verify --bind"),
-        ("schemaDiscovered", "schema-discover"),
-        ("semanticDrafted", "semantic-draft --semantic-plan <json>"),
-        ("semanticValidated", "semantic-validate --apply"),
-        ("semanticPublished", "semantic-publish --apply"),
-        ("semanticVerified", "semantic-verify --query-payload <json> --execute"),
+        ("datasourceConfigured", f"datasource-configure{profile_flag} --apply"),
+        ("datasourceVerified", f"datasource-verify{profile_flag} --bind"),
+        ("schemaDiscovered", f"schema-discover{profile_flag}"),
+        ("semanticDrafted", f"semantic-draft{profile_flag} --semantic-plan <json>"),
+        ("semanticValidated", f"semantic-validate{profile_flag} --apply"),
+        ("semanticPublished", f"semantic-publish{profile_flag} --apply"),
+        ("semanticVerified", f"semantic-verify{profile_flag} --query-payload <json> --execute"),
     ]
     for name, command in ordered:
         current = state.get("steps", {}).get(name, {})
@@ -1838,7 +1926,7 @@ def next_onboarding_action(state: dict) -> dict:
                     "instruction": "Inspect semantic publish evidence and repair refresh before any republish attempt.",
                 }
             if name == "semanticValidated" and current.get("status") == "failed":
-                command = "repair TM/QM, then semantic-draft --semantic-plan <json>"
+                command = f"repair TM/QM, then semantic-draft{profile_flag} --semantic-plan <json>"
             return {"step": name, "command": command, "status": current.get("status", "pending")}
     return {"step": None, "command": None, "status": "completed"}
 
@@ -1883,6 +1971,21 @@ def save_composite_result(evidence_dir: Path, name: str, payload: dict, files: l
     files.append(str(path))
 
 
+def resumed_phase(profile: str, phase: str, **values: object) -> dict:
+    return {
+        "success": True,
+        "schemaVersion": "foggy-deepseek-onboarding-resumed/v1",
+        "profile": profile,
+        "phase": phase,
+        "resumed": True,
+        **values,
+    }
+
+
+def step_completed(state: dict, name: str) -> bool:
+    return state.get("steps", {}).get(name, {}).get("status") == "completed"
+
+
 def datasource_run_command(args: argparse.Namespace) -> dict:
     _install_root, install_state, data_root, _runtime_state = onboarding_context(args, require_runtime=True)
     project_root = normalized(args.project_root or Path.cwd())
@@ -1902,6 +2005,11 @@ def datasource_run_command(args: argparse.Namespace) -> dict:
     if existing:
         if existing.get("connection") != requested_connection:
             raise OnboardingError("Existing onboarding profile does not match the requested connection plan")
+        if normalized(existing.get("projectRoot", "")) != project_root:
+            raise OnboardingError(
+                "Existing onboarding profile belongs to a different projectRoot; resume from that DSH workspace "
+                "or choose a new profile name"
+            )
         plan_result = {
             "success": True,
             "schemaVersion": "foggy-deepseek-onboarding-plan-result/v1",
@@ -1921,59 +2029,81 @@ def datasource_run_command(args: argparse.Namespace) -> dict:
             replace_plan=False,
         ))
     save_composite_result(evidence_dir, "01-plan.json", plan_result, files)
+    state = read_onboarding_state(data_root, profile)
 
-    configure_dry = datasource_configure_command(argparse.Namespace(
-        install_root=args.install_root, data_root=args.data_root, profile=profile, apply=False, replace=False,
-    ))
-    save_composite_result(evidence_dir, "02-datasource-dry.json", configure_dry, files)
-    if not args.approve_configure:
-        return {
-            "success": True,
-            "schemaVersion": "foggy-deepseek-datasource-run/v1",
-            "profile": profile,
-            "phaseStatus": "awaiting-configure-approval",
-            "evidenceDir": str(evidence_dir),
-            "evidenceFiles": files,
-            "next": "rerun with --approve-configure after the datasource mutation is approved",
-            "productionReady": False,
-        }
+    if step_completed(state, "datasourceConfigured"):
+        configured = resumed_phase(profile, "datasourceConfigured")
+        save_composite_result(evidence_dir, "02-datasource-dry.json", configured, files)
+        save_composite_result(evidence_dir, "03-datasource-apply.json", configured, files)
+    else:
+        configure_dry = datasource_configure_command(argparse.Namespace(
+            install_root=args.install_root, data_root=args.data_root, profile=profile, apply=False, replace=False,
+        ))
+        save_composite_result(evidence_dir, "02-datasource-dry.json", configure_dry, files)
+        if not args.approve_configure:
+            return {
+                "success": True,
+                "schemaVersion": "foggy-deepseek-datasource-run/v1",
+                "profile": profile,
+                "phaseStatus": "awaiting-configure-approval",
+                "evidenceDir": str(evidence_dir),
+                "evidenceFiles": files,
+                "next": "rerun with --approve-configure after the datasource mutation is approved",
+                "productionReady": False,
+            }
+        configured = datasource_configure_command(argparse.Namespace(
+            install_root=args.install_root, data_root=args.data_root, profile=profile, apply=True, replace=False,
+        ))
+        save_composite_result(evidence_dir, "03-datasource-apply.json", configured, files)
+        state = read_onboarding_state(data_root, profile)
 
-    configured = datasource_configure_command(argparse.Namespace(
-        install_root=args.install_root, data_root=args.data_root, profile=profile, apply=True, replace=False,
-    ))
-    save_composite_result(evidence_dir, "03-datasource-apply.json", configured, files)
-    tested = datasource_verify_command(argparse.Namespace(
-        install_root=args.install_root, data_root=args.data_root, profile=profile, bind=False,
-    ))
-    save_composite_result(evidence_dir, "04-datasource-test.json", tested, files)
-    if not args.approve_bind:
-        return {
-            "success": True,
-            "schemaVersion": "foggy-deepseek-datasource-run/v1",
-            "profile": profile,
-            "phaseStatus": "awaiting-bind-approval",
-            "evidenceDir": str(evidence_dir),
-            "evidenceFiles": files,
-            "next": "rerun with --approve-configure --approve-bind after namespace binding is approved",
-            "productionReady": False,
-        }
+    if step_completed(state, "datasourceVerified"):
+        bound = resumed_phase(profile, "datasourceVerified")
+        save_composite_result(evidence_dir, "04-datasource-test.json", bound, files)
+        save_composite_result(evidence_dir, "05-datasource-bind.json", bound, files)
+    else:
+        tested = datasource_verify_command(argparse.Namespace(
+            install_root=args.install_root, data_root=args.data_root, profile=profile, bind=False,
+        ))
+        save_composite_result(evidence_dir, "04-datasource-test.json", tested, files)
+        if not args.approve_bind:
+            return {
+                "success": True,
+                "schemaVersion": "foggy-deepseek-datasource-run/v1",
+                "profile": profile,
+                "phaseStatus": "awaiting-bind-approval",
+                "evidenceDir": str(evidence_dir),
+                "evidenceFiles": files,
+                "next": "rerun with --approve-configure --approve-bind after namespace binding is approved",
+                "productionReady": False,
+            }
+        bound = datasource_verify_command(argparse.Namespace(
+            install_root=args.install_root, data_root=args.data_root, profile=profile, bind=True,
+        ))
+        save_composite_result(evidence_dir, "05-datasource-bind.json", bound, files)
+        state = read_onboarding_state(data_root, profile)
 
-    bound = datasource_verify_command(argparse.Namespace(
-        install_root=args.install_root, data_root=args.data_root, profile=profile, bind=True,
-    ))
-    save_composite_result(evidence_dir, "05-datasource-bind.json", bound, files)
-    discovered = schema_discover_command(argparse.Namespace(
-        install_root=args.install_root,
-        data_root=args.data_root,
-        profile=profile,
-        schema=args.schema,
-        pattern=args.pattern,
-        table=args.table,
-        max_tables=args.max_tables,
-        list_only=False,
-        no_views=args.no_views,
-        include_indexes=args.include_indexes,
-    ))
+    if step_completed(state, "schemaDiscovered"):
+        schema_step = state["steps"]["schemaDiscovered"]
+        discovered = resumed_phase(
+            profile,
+            "schemaDiscovered",
+            selectedCount=schema_step.get("selectedCount", 0),
+            artifactPath=state.get("artifacts", {}).get("schemaDiscovery"),
+        )
+    else:
+        discovered = schema_discover_command(argparse.Namespace(
+            install_root=args.install_root,
+            data_root=args.data_root,
+            profile=profile,
+            schema=args.schema,
+            pattern=args.pattern,
+            table=args.table,
+            max_tables=args.max_tables,
+            list_only=False,
+            no_views=args.no_views,
+            include_indexes=args.include_indexes,
+        ))
     save_composite_result(evidence_dir, "06-schema.json", discovered, files)
     return {
         "success": True,
@@ -1989,6 +2119,29 @@ def datasource_run_command(args: argparse.Namespace) -> dict:
     }
 
 
+def semantic_plan_snapshot(state: dict, plan: dict) -> tuple[Path, dict, bool]:
+    project_root = normalized(state["projectRoot"])
+    draft_dir = normalized(project_root / plan["draftDir"])
+    if not is_child(draft_dir, project_root) or draft_dir == project_root:
+        raise OnboardingError("draftDir must stay inside projectRoot and cannot equal it")
+    manifest = semantic_manifest(draft_dir)
+    semantic = state.get("semantic", {})
+    registered = semantic.get("draftManifest") or {}
+    matches = bool(
+        step_completed(state, "semanticDrafted")
+        and normalized(semantic.get("draftDir", draft_dir)) == draft_dir
+        and semantic.get("bundleName") == plan["bundleName"]
+        and semantic.get("queryModels") == plan["queryModels"]
+        and registered.get("digest") == manifest["digest"]
+    )
+    return draft_dir, manifest, matches
+
+
+def published_digest_matches(state: dict, digest: str) -> bool:
+    published = state.get("steps", {}).get("semanticPublished", {})
+    return published.get("status") == "completed" and published.get("digest") == digest
+
+
 def semantic_run_command(args: argparse.Namespace) -> dict:
     approved_plan = validate_semantic_plan(read_json_object(normalized(args.semantic_plan), "Semantic plan"))
     if not approved_plan.get("profile"):
@@ -2000,6 +2153,17 @@ def semantic_run_command(args: argparse.Namespace) -> dict:
     profile_args.profile = profile
     state, _install_state, _data_root, _runtime_state = require_profile(profile_args, require_runtime=True)
     project_root = normalized(state["projectRoot"])
+    payload_path = normalized(args.query_payload)
+    if not is_child(payload_path, project_root):
+        raise OnboardingError(
+            "Query payload must stay inside projectRoot; place contracts under .foggy/onboarding-contracts before approval"
+        )
+    bounded_query_payload(payload_path)
+    declared_query_model = args.query_model or (approved_plan["queryModels"][0] if len(approved_plan["queryModels"]) == 1 else None)
+    if not declared_query_model:
+        raise OnboardingError("--query-model is required when the semantic plan declares multiple query models")
+    if declared_query_model not in approved_plan["queryModels"]:
+        raise OnboardingError("--query-model must be declared in semanticPlan.queryModels")
     contract_evidence = approved_plan.get("evidenceDir")
     if contract_evidence and args.evidence_dir:
         if normalized(project_root / contract_evidence) != normalized(args.evidence_dir):
@@ -2007,78 +2171,141 @@ def semantic_run_command(args: argparse.Namespace) -> dict:
     evidence_dir = composite_evidence_dir(project_root, profile, str(project_root / contract_evidence) if contract_evidence else args.evidence_dir)
     files: list[str] = []
 
-    drafted = semantic_draft_command(argparse.Namespace(
-        install_root=args.install_root,
-        data_root=args.data_root,
-        profile=profile,
-        semantic_plan=args.semantic_plan,
-    ))
+    _draft_dir, manifest, draft_matches = semantic_plan_snapshot(state, approved_plan)
+    published_matches = published_digest_matches(state, manifest["digest"])
+    if draft_matches or published_matches:
+        drafted = resumed_phase(profile, "semanticDrafted", digest=manifest["digest"])
+    else:
+        drafted = semantic_draft_command(argparse.Namespace(
+            install_root=args.install_root,
+            data_root=args.data_root,
+            profile=profile,
+            semantic_plan=args.semantic_plan,
+        ))
+        state = read_onboarding_state(normalized(state["dataRoot"]), profile)
+        manifest = state["semantic"]["draftManifest"]
     save_composite_result(evidence_dir, "07-semantic-draft.json", drafted, files)
-    validate_dry = semantic_validate_command(argparse.Namespace(
-        install_root=args.install_root,
-        data_root=args.data_root,
-        profile=profile,
-        apply=False,
-        include_stack_trace=False,
-    ))
-    save_composite_result(evidence_dir, "08-semantic-validate-dry.json", validate_dry, files)
-    if not args.approve_validate:
-        return {
-            "success": True,
-            "schemaVersion": "foggy-deepseek-semantic-run/v1",
-            "profile": profile,
-            "phaseStatus": "awaiting-validate-approval",
-            "evidenceDir": str(evidence_dir),
-            "evidenceFiles": files,
-            "next": "rerun with --approve-validate after the validation catalog mutation is approved",
-            "productionReady": False,
-        }
-
-    validated = semantic_validate_command(argparse.Namespace(
-        install_root=args.install_root,
-        data_root=args.data_root,
-        profile=profile,
-        apply=True,
-        include_stack_trace=False,
-    ))
+    state = read_onboarding_state(normalized(state["dataRoot"]), profile)
+    validation_step = state.get("steps", {}).get("semanticValidated", {})
+    published_matches = published_digest_matches(state, manifest["digest"])
+    validation_matches = validation_step.get("status") == "completed" and validation_step.get("digest") == manifest["digest"]
+    if validation_matches or published_matches:
+        if published_matches and not validation_matches:
+            mark_step(state, "semanticValidated", "completed", digest=manifest["digest"], resumedFromPublished=True)
+            write_onboarding_state(normalized(state["dataRoot"]), state)
+        validated = resumed_phase(profile, "semanticValidated", digest=manifest["digest"])
+        save_composite_result(evidence_dir, "08-semantic-validate-dry.json", validated, files)
+    else:
+        validate_dry = semantic_validate_command(argparse.Namespace(
+            install_root=args.install_root,
+            data_root=args.data_root,
+            profile=profile,
+            apply=False,
+            include_stack_trace=False,
+        ))
+        save_composite_result(evidence_dir, "08-semantic-validate-dry.json", validate_dry, files)
+        if not args.approve_validate:
+            return {
+                "success": True,
+                "schemaVersion": "foggy-deepseek-semantic-run/v1",
+                "profile": profile,
+                "phaseStatus": "awaiting-validate-approval",
+                "evidenceDir": str(evidence_dir),
+                "evidenceFiles": files,
+                "next": "rerun with --approve-validate after the validation catalog mutation is approved",
+                "productionReady": False,
+            }
+        validated = semantic_validate_command(argparse.Namespace(
+            install_root=args.install_root,
+            data_root=args.data_root,
+            profile=profile,
+            apply=True,
+            include_stack_trace=False,
+        ))
     save_composite_result(evidence_dir, "09-semantic-validate-apply.json", validated, files)
-    publish_dry = semantic_publish_command(argparse.Namespace(
-        install_root=args.install_root,
-        data_root=args.data_root,
-        profile=profile,
-        apply=False,
-        replace_bundle=False,
-        watch=False,
-        prune=False,
-    ))
-    save_composite_result(evidence_dir, "10-semantic-publish-dry.json", publish_dry, files)
-    if not args.approve_publish:
+    state = read_onboarding_state(normalized(state["dataRoot"]), profile)
+    if published_digest_matches(state, manifest["digest"]):
+        published = resumed_phase(
+            profile,
+            "semanticPublished",
+            digest=manifest["digest"],
+            bundleName=state["semantic"]["bundleName"],
+        )
+        save_composite_result(evidence_dir, "10-semantic-publish-dry.json", published, files)
+    else:
+        publish_dry = semantic_publish_command(argparse.Namespace(
+            install_root=args.install_root,
+            data_root=args.data_root,
+            profile=profile,
+            apply=False,
+            replace_bundle=False,
+            watch=False,
+            prune=False,
+        ))
+        save_composite_result(evidence_dir, "10-semantic-publish-dry.json", publish_dry, files)
+        if not args.approve_publish:
+            return {
+                "success": True,
+                "schemaVersion": "foggy-deepseek-semantic-run/v1",
+                "profile": profile,
+                "phaseStatus": "awaiting-publish-approval",
+                "evidenceDir": str(evidence_dir),
+                "evidenceFiles": files,
+                "next": "rerun with --approve-validate --approve-publish after publication is approved",
+                "productionReady": False,
+            }
+        published = semantic_publish_command(argparse.Namespace(
+            install_root=args.install_root,
+            data_root=args.data_root,
+            profile=profile,
+            apply=True,
+            replace_bundle=False,
+            watch=False,
+            prune=False,
+        ))
+    save_composite_result(evidence_dir, "11-semantic-publish-apply.json", published, files)
+    state = read_onboarding_state(normalized(state["dataRoot"]), profile)
+    verified_step = state.get("steps", {}).get("semanticVerified", {})
+    payload_digest = sha256(payload_path)
+    if (
+        verified_step.get("status") == "completed"
+        and verified_step.get("queryModel") == declared_query_model
+        and verified_step.get("queryPayloadDigest") == payload_digest
+    ):
+        resumed = resumed_phase(
+            profile,
+            "semanticVerified",
+            queryModel=declared_query_model,
+            queryValidated=True,
+            queryExecuted=True,
+            rowCount=verified_step.get("rowCount"),
+            queryPayloadDigest=payload_digest,
+        )
+        save_composite_result(evidence_dir, "12-query-validate.json", resumed, files)
+        save_composite_result(evidence_dir, "13-query-execute.json", resumed, files)
+        status = onboarding_status_command(argparse.Namespace(
+            install_root=args.install_root, data_root=args.data_root, profile=profile,
+        ))
+        save_composite_result(evidence_dir, "14-status.json", status, files)
         return {
             "success": True,
             "schemaVersion": "foggy-deepseek-semantic-run/v1",
             "profile": profile,
-            "phaseStatus": "awaiting-publish-approval",
+            "phaseStatus": "completed",
+            "resumed": True,
+            "queryModel": declared_query_model,
+            "queryValidated": True,
+            "queryExecuted": True,
+            "rowCount": verified_step.get("rowCount"),
             "evidenceDir": str(evidence_dir),
             "evidenceFiles": files,
-            "next": "rerun with --approve-validate --approve-publish after publication is approved",
             "productionReady": False,
         }
-
-    published = semantic_publish_command(argparse.Namespace(
-        install_root=args.install_root,
-        data_root=args.data_root,
-        profile=profile,
-        apply=True,
-        replace_bundle=False,
-        watch=False,
-        prune=False,
-    ))
-    save_composite_result(evidence_dir, "11-semantic-publish-apply.json", published, files)
     query_validated = semantic_verify_command(argparse.Namespace(
         install_root=args.install_root,
         data_root=args.data_root,
         profile=profile,
-        query_model=args.query_model,
+        query_model=declared_query_model,
         query_payload=args.query_payload,
         execute=False,
     ))
@@ -2101,7 +2328,7 @@ def semantic_run_command(args: argparse.Namespace) -> dict:
         install_root=args.install_root,
         data_root=args.data_root,
         profile=profile,
-        query_model=args.query_model,
+        query_model=declared_query_model,
         query_payload=args.query_payload,
         execute=True,
     ))
@@ -2280,13 +2507,13 @@ def build_parser() -> argparse.ArgumentParser:
     status = sub.add_parser("onboard-status")
     status.add_argument("--install-root")
     status.add_argument("--data-root")
-    status.add_argument("--profile", default="default")
+    status.add_argument("--profile")
     status.set_defaults(handler=onboarding_status_command)
 
     resume = sub.add_parser("onboard-resume")
     resume.add_argument("--install-root")
     resume.add_argument("--data-root")
-    resume.add_argument("--profile", default="default")
+    resume.add_argument("--profile")
     resume.set_defaults(handler=onboarding_resume_command)
 
     datasource_run = sub.add_parser("onboard-datasource-run")
@@ -2322,7 +2549,7 @@ def build_parser() -> argparse.ArgumentParser:
     datasource_configure = sub.add_parser("datasource-configure")
     datasource_configure.add_argument("--install-root")
     datasource_configure.add_argument("--data-root")
-    datasource_configure.add_argument("--profile", default="default")
+    datasource_configure.add_argument("--profile")
     datasource_configure.add_argument("--apply", action="store_true")
     datasource_configure.add_argument("--replace", action="store_true")
     datasource_configure.set_defaults(handler=datasource_configure_command)
@@ -2330,14 +2557,14 @@ def build_parser() -> argparse.ArgumentParser:
     datasource_verify = sub.add_parser("datasource-verify")
     datasource_verify.add_argument("--install-root")
     datasource_verify.add_argument("--data-root")
-    datasource_verify.add_argument("--profile", default="default")
+    datasource_verify.add_argument("--profile")
     datasource_verify.add_argument("--bind", action="store_true")
     datasource_verify.set_defaults(handler=datasource_verify_command)
 
     schema_discover = sub.add_parser("schema-discover")
     schema_discover.add_argument("--install-root")
     schema_discover.add_argument("--data-root")
-    schema_discover.add_argument("--profile", default="default")
+    schema_discover.add_argument("--profile")
     schema_discover.add_argument("--schema", action="append")
     schema_discover.add_argument("--pattern")
     schema_discover.add_argument("--table", action="append")
@@ -2350,14 +2577,14 @@ def build_parser() -> argparse.ArgumentParser:
     semantic_draft = sub.add_parser("semantic-draft")
     semantic_draft.add_argument("--install-root")
     semantic_draft.add_argument("--data-root")
-    semantic_draft.add_argument("--profile", default="default")
+    semantic_draft.add_argument("--profile")
     semantic_draft.add_argument("--semantic-plan", required=True)
     semantic_draft.set_defaults(handler=semantic_draft_command)
 
     semantic_validate = sub.add_parser("semantic-validate")
     semantic_validate.add_argument("--install-root")
     semantic_validate.add_argument("--data-root")
-    semantic_validate.add_argument("--profile", default="default")
+    semantic_validate.add_argument("--profile")
     semantic_validate.add_argument("--apply", action="store_true")
     semantic_validate.add_argument("--include-stack-trace", action="store_true")
     semantic_validate.set_defaults(handler=semantic_validate_command)
@@ -2365,7 +2592,7 @@ def build_parser() -> argparse.ArgumentParser:
     semantic_publish = sub.add_parser("semantic-publish")
     semantic_publish.add_argument("--install-root")
     semantic_publish.add_argument("--data-root")
-    semantic_publish.add_argument("--profile", default="default")
+    semantic_publish.add_argument("--profile")
     semantic_publish.add_argument("--apply", action="store_true")
     semantic_publish.add_argument("--replace-bundle", action="store_true")
     semantic_publish.add_argument("--watch", action="store_true")
@@ -2375,7 +2602,7 @@ def build_parser() -> argparse.ArgumentParser:
     semantic_verify = sub.add_parser("semantic-verify")
     semantic_verify.add_argument("--install-root")
     semantic_verify.add_argument("--data-root")
-    semantic_verify.add_argument("--profile", default="default")
+    semantic_verify.add_argument("--profile")
     semantic_verify.add_argument("--query-model")
     semantic_verify.add_argument("--query-payload", required=True)
     semantic_verify.add_argument("--execute", action="store_true")

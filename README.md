@@ -8,7 +8,7 @@ only when the user selects **Initialize Foggy**.
 ## Local beta installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.5.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.6.tgz
 ```
 
 Restart `dsh web`, open Settings → Plugins → Foggy Data Analysis, and initialize
@@ -23,8 +23,9 @@ dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-p
 For development, `FOGGY_ASSET_CACHE_DIRS` can contain platform-delimited verified
 asset-cache directories. It is not required for a normal install.
 
-Database credentials are deliberately outside the ordinary DSH settings
-document. The database and semantic-layer wizard is the next Bundle milestone.
+Database credentials remain outside the ordinary DSH settings document. The
+bundled onboarding Skill drives datasource discovery, semantic drafting,
+checkpointed publication, and bounded read-only query verification.
 
 ## Native Skill and workspace contract
 
@@ -33,6 +34,11 @@ The Bundle registers `foggy-deepseek-onboarding` and the downloaded
 are available in every DSH workspace without copying or symlinking `.agents`.
 The current session `cwd` remains the workspace boundary for semantic drafts and
 evidence.
+
+Opaque CLI profiles default to the private persistent
+`<dataRoot>/cli-profiles` directory. Composite onboarding commands are
+idempotent: unchanged completed phases are resumed rather than re-adding a
+datasource or re-registering a published bundle.
 
 CLI, Launcher, the analysis Skill, install state, and Runtime state live in the
 user-level Foggy component directories. The managed CLI is intentionally isolated

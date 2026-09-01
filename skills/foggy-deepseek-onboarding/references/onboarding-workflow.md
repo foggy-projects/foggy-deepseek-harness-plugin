@@ -23,6 +23,16 @@ to paste a password and do not put a JDBC URL, username, password environment-va
 line, logs, or evidence. For non-SQLite databases, ask the user to set the named environment variable
 before Runtime starts so the Java process inherits it. Recommend a read-only database account.
 
+Use the current DSH session workspace as `projectRoot`. Store approved non-secret contracts at
+`.foggy/onboarding-contracts/<profile>/`, semantic drafts at `.foggy/onboarding-drafts/<profile>/`, and
+command evidence at `.foggy/onboarding-command-evidence/<profile>/`. Do not split these files across the
+session workspace and a separate example repository. The wrapper rejects a query payload outside the
+recorded project root before any semantic validation or publication mutation occurs.
+
+The wrapper defaults `FOGGY_RUNTIME_PROFILE_STORE` to the private persistent directory
+`<dataRoot>/cli-profiles`. An explicit operator-provided value still wins. Do not use `/tmp` for a profile
+that must survive a WSL or Harness restart.
+
 Treat every user-supplied identifier and bound as immutable input: profile, datasource, namespace,
 models directory, bundle name, TM/QM name, query fields, and limit. Do not swap in demo names, add
 fields, raise the limit, or introduce replacement flags. If one of these inputs is missing, pause for
@@ -52,6 +62,13 @@ onboard-semantic-run --semantic-plan <approved-json> --query-payload <approved-j
 
 Include an approval flag only after the user approves that exact action. Without it, the composite
 command stops after the corresponding dry-run and returns `phaseStatus=awaiting-...-approval`.
+
+Both composite commands are resumable. When the approved contract is unchanged, they skip completed
+checkpoints instead of re-adding an existing datasource, revalidating an already published draft, or
+registering the same bundle twice. If query validation fails after publication, correct the project-local
+payload and rerun `onboard-semantic-run`; it resumes at query verification and leaves the active bundle in
+place. A same-name datasource is accepted idempotently only when its public name and database type match
+the approved plan; otherwise replacement still requires explicit approval.
 
 The granular commands below remain available for manual troubleshooting and resumption. Do not expand
 the composite commands into this list during a normal Harness turn.
@@ -110,6 +127,11 @@ For verification, build a project-local query payload only from `models describe
 requires an integer `limit` from 1 through 100. The first `semantic-verify` call lists/describes models and
 validates the query; only `--execute` reads business data. Full results stay in evidence and the command
 returns only counts and paths.
+
+Before the first semantic mutation, the composite command checks that the query payload is inside
+`projectRoot`, has a bounded limit, and targets a query model declared in the approved semantic plan.
+After publication, `semantic-verify` always describes the live model before validation. If a field is
+rejected, update the payload from those described names and rerun the same composite command.
 
 Do not open, summarize, or quote `query-execute.json` or the Runtime's generated SQL after execution.
 The conversational result may contain only `queryValidated`, `queryExecuted`, `rowCount`, the model

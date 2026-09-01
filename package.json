@@ -1,6 +1,6 @@
 {
   "name": "@foggy-projects/deepseek-harness-plugin",
-  "version": "0.4.0-beta.5",
+  "version": "0.4.0-beta.6",
   "description": "Foggy Java data analysis engine integration for DeepSeek Harness",
   "type": "module",
   "main": "./lib/index.js",
@@ -55,6 +55,6 @@
   },
   "scripts": {
     "check": "node --check lib/index.js && node --check lib/skill-provider.js && node --check lib/client.js && node --check lib/typert.js && node --check lib/remote.js",
-    "test": "node --test test/package.test.js"
+    "test": "node --test test/package.test.js && python test/onboarding_unit.py"
   }
 }
