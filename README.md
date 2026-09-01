@@ -8,7 +8,7 @@ only when the user selects **Initialize Foggy**.
 ## Local beta installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.4.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.5.tgz
 ```
 
 Restart `dsh web`, open Settings → Plugins → Foggy Data Analysis, and initialize
@@ -20,27 +20,26 @@ After npm beta publication, the corresponding one-line install is:
 dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@beta
 ```
 
-For development, `FOGGY_PROJECT_ROOT` can override the workspace that receives
-the Skills and `FOGGY_ASSET_CACHE_DIRS` can contain platform-delimited verified
-asset-cache directories. Neither variable is required for a normal install.
+For development, `FOGGY_ASSET_CACHE_DIRS` can contain platform-delimited verified
+asset-cache directories. It is not required for a normal install.
 
 Database credentials are deliberately outside the ordinary DSH settings
 document. The database and semantic-layer wizard is the next Bundle milestone.
 
-## Managed workspace contract
+## Native Skill and workspace contract
 
-Initialization writes a non-secret discovery document at
-`.foggy/deepseek-harness/context.json` in the selected project. It points agents
-to the authoritative global install state, the managed CLI's absolute command,
-the Runtime state, and the two workspace Skills. The managed CLI is intentionally
-isolated and does not need to be on `PATH`.
+The Bundle registers `foggy-deepseek-onboarding` and the downloaded
+`foggy-ai-analysis` through DeepSeek Harness's native Skill provider API. Skills
+are available in every DSH workspace without copying or symlinking `.agents`.
+The current session `cwd` remains the workspace boundary for semantic drafts and
+evidence.
 
-Both `foggy-deepseek-onboarding` and `foggy-ai-analysis` carry a
-`.foggy-managed-skill.json` marker. **Re-download / Repair** verifies their
-managed content, backs up a modified or outdated Skill under
-`.foggy/onboarding-backups`, restores missing content, and regenerates the
-project context. If a Skill is restored while Harness is already running, start
-a new task or restart Harness so its Skill registry can reload it.
+CLI, Launcher, the analysis Skill, install state, and Runtime state live in the
+user-level Foggy component directories. The managed CLI is intentionally isolated
+and does not need to be on `PATH`. **Re-download / Repair** verifies the global
+analysis Skill, backs up modified or outdated managed content, restores it, and
+invalidates DSH's Skill catalog. The onboarding Skill is bundled with the plugin
+and is restored by reinstalling or upgrading the plugin package.
 
 ## Linux and WSL2 experience
 

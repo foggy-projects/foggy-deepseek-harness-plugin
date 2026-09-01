@@ -7,22 +7,23 @@ description: Install and operate a pinned Foggy CLI-first dev/test environment f
 
 Set up Foggy through shell and `foggy-runtime` CLI. Do not configure Foggy MCP for this local workflow.
 
-## Installed-context gate
+## Native registry and installed-state gate
 
-Before deciding that Foggy, its CLI, or either Skill is missing, look for the project-relative file
-`.foggy/deepseek-harness/context.json` from the current workspace root:
+This Skill is registered by the Foggy plugin through DeepSeek Harness's native Skill registry. Its
+resource base is the authoritative location for these scripts and references; do not search for or
+copy this Skill into the current workspace.
 
-- Treat a valid `foggy-deepseek-harness-context/v1` document as the discovery pointer to the global
-  install state, absolute managed CLI command, Runtime state, and both installed Skills.
-- Confirm the installation with this Skill's `doctor` wrapper. The absence of `foggy-runtime` from
-  `PATH` is not evidence that the managed CLI is missing; the plugin intentionally installs it in an
-  isolated environment and records its absolute command in the context and install-state files.
-- Do not independently download or reinstall the CLI when valid project context exists. If the
-  context, a managed marker, or a Skill is missing or invalid, ask the user to open the Foggy plugin
-  settings and use **Re-download / Repair**. That operation regenerates context and restores managed
-  Skills, preserving a backup of modified or outdated Skill directories.
-- If the plugin reports ready but this Skill was restored during the current Harness task, tell the
-  user that a new task or Harness restart may be needed for the Skill registry to reload.
+- Resolve the global install state from the platform default component directory: on Linux use
+  `${XDG_DATA_HOME:-$HOME/.local/share}/foggy/deepseek-harness/install-state.json`; on Windows use
+  `%LOCALAPPDATA%\Foggy\DeepSeekHarness\install-state.json`.
+- Confirm the installation with this Skill's `doctor` wrapper and pass the current DSH session
+  workspace as `--project-root`. The absence of `foggy-runtime` from `PATH` is not evidence that the
+  managed CLI is missing; the plugin intentionally installs it in an isolated environment and records
+  its absolute command in the global install state.
+- Do not independently download or reinstall the CLI. If the global install state, managed marker, or
+  analysis Skill is missing or invalid, ask the user to open the Foggy plugin settings and use
+  **Re-download / Repair**. Repair restores the global managed analysis Skill and invalidates the
+  native DSH Skill catalog. Reinstall or upgrade the plugin itself to restore this bundled Skill.
 
 ## Mandatory orchestration boundary
 
@@ -59,14 +60,14 @@ For every new-database onboarding session, this Skill is the orchestration autho
 
 ## Workflow
 
-1. Read `.foggy/deepseek-harness/context.json`, then run `scripts/doctor.ps1 --project-root <root>` on Windows or
-   `bash scripts/doctor.sh --project-root <root>` on Linux.
-2. If the pinned CLI, Launcher, project context, or either managed Skill is missing, use the Foggy
+1. Run `scripts/doctor.ps1 --project-root <current-session-workspace>` on Windows or
+   `bash scripts/doctor.sh --project-root <current-session-workspace>` on Linux.
+2. If the pinned CLI, Launcher, or global managed analysis Skill is missing, use the Foggy
    plugin's Repair action. Use the matching install script only when the plugin UI is unavailable;
    use `--dry-run` first when paths or permissions are uncertain.
 3. Run `runtime-start` and require successful `wait-ready` plus `capabilities`. Record engine,
    Runtime API version, schema version, security mode, URL, namespace, PID, and evidence path.
-4. Confirm the project contains `.agents/skills/foggy-ai-analysis/SKILL.md`.
+4. Load `foggy-ai-analysis` from the native DSH Skill registry. Do not require a workspace copy.
 5. For a new business database, read [references/onboarding-workflow.md](references/onboarding-workflow.md)
    and prefer its two composite `onboard-datasource-run` / `onboard-semantic-run` commands. Require the
    trusted operator to create the private CLI profile outside Harness. Accept only the opaque profile
