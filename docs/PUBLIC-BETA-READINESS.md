@@ -1,73 +1,51 @@
-# Public Beta readiness
+# Public beta readiness: 0.4.0-beta.8
 
-Assessment target: `@foggy-projects/deepseek-harness-plugin@0.4.0-beta.7` with
-DeepSeek Harness `0.1.1-rc.2` on Ubuntu/WSL2.
+Assessment date: 2026-09-03
 
-## Release verdict
+## Verdict
 
-The plugin is ready for a **public, explicitly scoped dev/test Beta** after the
-npm package has cleared DeepSeek Harness's minimum-release-age policy. It is not
-a production Runtime distribution.
+`0.4.0-beta.8` is suitable for a scoped public beta on Windows 10/11 x64 and
+Linux/WSL2 x64. It is not a general-availability release.
 
-Supported public Beta scope:
+The plugin package stays small and downloads large components only during
+initialization. Node.js and Java remain system prerequisites. Python 3.12.13 is
+installed privately below Foggy's component directory and does not change the
+system PATH, registry, or a user's existing Python installation.
 
-- Linux and WSL2 on a Linux-native workspace filesystem;
-- Node.js 22.19+, Python 3.11+, and Java 17+;
-- DeepSeek Harness web profile `0.1.1-rc.2`;
-- local-only Foggy Runtime with `securityMode=none-dev-test-only`;
-- MySQL onboarding through an operator-created opaque CLI profile;
-- schema discovery, TM/QM publication, and bounded read-only query verification.
+## Verified behavior
 
-SQLite and PostgreSQL remain accepted by the contract layer but are not part of
-the first public Beta acceptance matrix until their own end-to-end fixtures pass.
+- The npm tarball is about 67 KB compressed and contains no Python or Java
+  runtime binary.
+- Managed CPython assets are pinned by URL, byte size, and SHA256 for Windows,
+  Linux, and macOS on x64 and arm64.
+- Windows x64 completed a cold Python download, checksum verification,
+  extraction, initialization, forced Python repair, and doctor run.
+- Linux/WSL2 x64 completed managed Python extraction, initialization, and a live
+  DeepSeek Harness `0.1.1-rc.2` UI status check.
+- The UI reported Python 3.12.13 as `Foggy private`, and CLI 0.1.23, Launcher
+  0.1.18, analysis Skill 0.1.17, and onboarding Skill 0.4.0-beta.8 as installed.
+- Interrupted downloads resume with HTTP Range when the server supports it;
+  downloaded artifacts are not trusted until the complete SHA256 matches.
+- Automated regression passed under Node 22.23.2: 15 Node tests and 8 Python
+  tests, plus shell and PowerShell syntax checks.
 
-## Acceptance evidence
+## Beta boundaries
 
-- Package tests: 10 Node tests passed.
-- Onboarding unit tests: 8 Python tests passed.
-- Syntax checks: gateway, web client, and onboarding Python passed.
-- Upgrade test: beta.6 to beta.7 in an active DSH web profile passed.
-- Clean-user install: the final beta.7 tarball installed into a fresh DSH
-  profile in about one second once the DSH runtime was available; initialization
-  from a verified local asset cache and the subsequent `doctor` check passed.
-- Registry install: the previously published beta.6 resolved and installed from
-  npm in an otherwise clean DSH profile, validating the public package path.
-- Runtime reuse: the recorded Java process was verified without a duplicate
-  start (`action=already-running-verified`); the persistent-state content hash
-  was unchanged before and after this read-only verification.
-- Legacy profile migration: one opaque profile moved to the persistent private
-  store; no password value was present or copied.
-- New-workspace adoption: an existing completed `tms` profile was bound to a new
-  workspace without replacing its datasource, bundle, or semantic models.
-- Query acceptance: validation and execution passed with `rowCount=20`; an
-  identical second run resumed without re-execution.
-- Existing-workspace regression: `demo` completed datasource reuse and a bounded
-  read-only query with `rowCount=20`.
-- Settings UI: component status, eight onboarding phases, per-component repair,
-  and diagnostics export were exercised in DSH web.
-- Diagnostics privacy: exported JSON had mode `0600` and contained no JDBC URL,
-  password marker, password environment-variable name, or database name.
+- Supported public-beta targets: Windows 10/11 x64 and Linux/WSL2 x64.
+- Windows users must install a supported system Node.js line (`^22.19.0` or
+  `>=24.0.0`) and Java 17 or later. They do not need to install Python.
+- macOS and arm64 assets are pinned and integrity-checked but have not received
+  the same end-to-end host validation; treat those targets as experimental.
+- DeepSeek Harness itself is still consumed at `0.1.1-rc.2`, so its plugin
+  installation and supply-chain policy behavior may change before a stable
+  Harness release.
+- Runtime production authentication is outside this beta's default local
+  onboarding mode. The UI and doctor continue to report `productionReady=false`
+  for the development-only no-auth mode.
 
-## Release gates and operating limits
+## Release gate after publication
 
-1. Publish with npm dist-tag `beta`; do not move `latest` yet.
-2. Wait for the DSH/pnpm minimum-release-age window before announcing the
-   one-line registry install command.
-3. Clearly label the Runtime local dev/test only and never instruct users to
-   expose port 18066 to a network.
-4. Explain that DSH Workspace Write mode may request approval when onboarding
-   writes private state below `~/.local/state/foggy/deepseek-harness`.
-5. Treat a cold `npx @deepseek-ai/dsh` dependency resolution as Harness setup
-   time, not plugin download time. One clean WSL run was still resolving the
-   Harness dependency graph after 12 minutes, while the final plugin tarball is
-   only about 59 KiB and installs in about one second once DSH is present.
-6. Keep engine and CLI source changes outside this repository and require
-   separate authorization for them.
-
-## Stable-release blockers
-
-- PostgreSQL and SQLite end-to-end database fixtures.
-- A production-authenticated Runtime distribution and network threat model.
-- Broader OS coverage, especially native Windows.
-- Compatibility testing against a non-RC DeepSeek Harness release.
-- A marketplace submission channel and its final review requirements.
+Before broad announcement, complete the native Windows fresh-machine checklist
+in [WINDOWS-BETA-ACCEPTANCE.md](./WINDOWS-BETA-ACCEPTANCE.md). Record the exact
+Node, Java, DeepSeek Harness, and plugin versions and confirm that initialization
+works without a system Python executable.

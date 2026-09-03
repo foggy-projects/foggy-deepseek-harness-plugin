@@ -1,6 +1,6 @@
 {
   "name": "@foggy-projects/deepseek-harness-plugin",
-  "version": "0.4.0-beta.7",
+  "version": "0.4.0-beta.8",
   "description": "Foggy Java data analysis engine integration for DeepSeek Harness",
   "type": "module",
   "main": "./lib/index.js",
@@ -19,11 +19,14 @@
     "!skills/**/*.pyc",
     "cordis.patch.yml",
     "experience/linux/**",
+    "docs/PUBLIC-BETA-READINESS.md",
+    "docs/WINDOWS-BETA-ACCEPTANCE.md",
+    "THIRD-PARTY-RUNTIME-NOTICES.md",
     "README.md"
   ],
   "license": "Apache-2.0",
   "engines": {
-    "node": ">=22.19.0"
+    "node": "^22.19.0 || >=24.0.0"
   },
   "dsh": {
     "bundle": {
@@ -54,7 +57,7 @@
     "@deepseek-ai/dsh-typert-protocol": "^0.1.1-rc.2"
   },
   "scripts": {
-    "check": "node --check lib/index.js && node --check lib/skill-provider.js && node --check lib/client.js && node --check lib/typert.js && node --check lib/remote.js",
+    "check": "node --check lib/index.js && node --check lib/python-runtime.js && node --check lib/skill-provider.js && node --check lib/client.js && node --check lib/typert.js && node --check lib/remote.js",
     "test": "node --test test/package.test.js && python test/onboarding_unit.py"
   }
 }

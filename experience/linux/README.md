@@ -5,14 +5,13 @@ It has been designed for Ubuntu 22.04/24.04 x86_64 and WSL2.
 
 ## Prerequisites
 
-- Node.js 22.19 or newer
-- Python 3.11 or newer with `venv`
+- Node.js `^22.19.0` or `>=24.0.0`
 - Java 17 or newer
-- Git and npm
+- Git, npm, and `tar`
 - At least 4 GiB free disk space and 2 GiB available memory; 4 GiB memory is recommended
 
 Keep the experience root on the Linux-native filesystem, such as under `$HOME`. In WSL2, do not
-put DSH, `node_modules`, the Python virtual environment, or Foggy data under `/mnt/c` or `/mnt/d`.
+put DSH, `node_modules`, Foggy's private Python environment, or Foggy data under `/mnt/c` or `/mnt/d`.
 
 ## Prepare
 
@@ -35,8 +34,8 @@ Start the prepared profile with:
 ```
 
 Open the URL printed by DSH, then choose **Settings → Plugins → Foggy Data Analysis** and select
-**Initialize Foggy**. The CLI, Launcher, and analysis Skill are downloaded from their pinned public
-Releases and verified before installation.
+**Initialize Foggy**. Private Python, the CLI, Launcher, and analysis Skill are downloaded from their
+pinned public Releases and verified before installation. A system Python is not required.
 
 Provider configuration remains a separate DSH setup step. Store API keys in a private environment
 file or secret manager; do not add them to the DSH settings document or the project repository.

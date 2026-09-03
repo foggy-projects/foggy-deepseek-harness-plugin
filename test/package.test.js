@@ -1,15 +1,20 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { access, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { compatible, versionParts } from '../lib/version.js'
+import { compatible, compatibleNode, versionParts } from '../lib/version.js'
+import { ensurePythonRuntime, managedPythonExecutable, probePythonRuntime, pythonAssetKey, selectPythonAsset } from '../lib/python-runtime.js'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.0-beta.7')
+  assert.equal(pkg.version, '0.4.0-beta.8')
+  assert.equal(pkg.engines.node, '^22.19.0 || >=24.0.0')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
   assert.equal(pkg.exports['./client'], './lib/client.js')
@@ -25,16 +30,123 @@ test('bundle patch mounts the dual-face Foggy package', async () => {
 test('documents the pnpm workspace-root install required by DSH rc.2', async () => {
   const readme = await readFile(join(root, 'README.md'), 'utf8')
   assert.match(readme, /dsh plugin --profile web add --workspace-root/)
-  assert.match(readme, /0\.4\.0-beta\.7\.tgz/)
+  assert.match(readme, /0\.4\.0-beta\.8\.tgz/)
   assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@beta/)
 })
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.0-beta.7')
+  assert.equal(versions.packageVersion, '0.4.0-beta.8')
+  assert.equal(versions.components.python.version, '3.12.13')
   assert.equal(versions.components.cli.version, '0.1.23')
   assert.equal(versions.components.launcher.version, '0.1.18')
   assert.ok(versions.components.launcher.assets.every((asset) => asset.url && asset.sha256))
+})
+
+test('pins private Python distributions for supported desktop platforms', async () => {
+  const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
+  assert.equal(pythonAssetKey('win32', 'x64'), 'win32-x64')
+  assert.match(managedPythonExecutable('C:\\Foggy', versions, 'win32'), /python\.exe$/)
+  assert.match(managedPythonExecutable('/tmp/foggy', versions, 'linux'), /bin[\\/]python3$/)
+  for (const key of ['win32-x64', 'win32-arm64', 'linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64']) {
+    const asset = selectPythonAsset(versions, ...key.split('-').reduce((parts, value, index) => {
+      if (index === 0) return [value]
+      parts.push(value)
+      return parts
+    }, []))
+    assert.match(asset.sha256, /^[a-f0-9]{64}$/)
+    assert.ok(asset.size > 20_000_000)
+  }
+})
+
+test('does not silently fall back to a system executable for private Python', async () => {
+  const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
+  const installRoot = await mkdtemp(join(tmpdir(), 'foggy-python-probe-'))
+  try {
+    const missing = await probePythonRuntime({ installRoot, manifest: versions, env: {} })
+    assert.equal(missing.available, false)
+    assert.equal(missing.source, 'managed')
+    const notPython = await probePythonRuntime({ installRoot, manifest: versions, env: { FOGGY_PYTHON: process.execPath } })
+    assert.equal(notPython.available, false)
+    assert.match(notPython.error, /not Python/)
+  } finally {
+    await rm(installRoot, { recursive: true, force: true })
+  }
+})
+
+test('rejects and removes a downloaded Python archive with the wrong SHA256', async () => {
+  const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
+  const installRoot = await mkdtemp(join(tmpdir(), 'foggy-python-corrupt-'))
+  const server = createServer((_request, response) => {
+    const body = Buffer.from('not-a-python-runtime')
+    response.writeHead(200, { 'content-length': body.length })
+    response.end(body)
+  })
+  await new Promise((resolvePromise) => server.listen(0, '127.0.0.1', resolvePromise))
+  try {
+    const address = server.address()
+    const key = pythonAssetKey()
+    versions.components.python.assets[key] = {
+      file: 'corrupt-python.tar.gz',
+      url: `http://127.0.0.1:${address.port}/corrupt-python.tar.gz`,
+      sha256: '0'.repeat(64),
+      size: 20,
+    }
+    await assert.rejects(
+      ensurePythonRuntime({ installRoot, manifest: versions, env: {} }),
+      /SHA256 mismatch/,
+    )
+    await assert.rejects(access(join(installRoot, 'downloads', 'python', 'corrupt-python.tar.gz.download')))
+  } finally {
+    await new Promise((resolvePromise) => server.close(resolvePromise))
+    await rm(installRoot, { recursive: true, force: true })
+  }
+})
+
+test('resumes an interrupted managed Python download before verification', async () => {
+  const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
+  const installRoot = await mkdtemp(join(tmpdir(), 'foggy-python-resume-'))
+  const body = Buffer.from('complete-but-not-a-real-tar-archive')
+  let requestCount = 0
+  let resumedRange = null
+  const server = createServer((request, response) => {
+    requestCount += 1
+    if (requestCount === 1) {
+      response.writeHead(200, { 'content-length': body.length })
+      response.write(body.subarray(0, 8))
+      setTimeout(() => response.destroy(), 10)
+      return
+    }
+    resumedRange = request.headers.range
+    const start = Number(String(resumedRange).match(/bytes=(\d+)-/)?.[1] || 0)
+    response.writeHead(206, {
+      'content-length': body.length - start,
+      'content-range': `bytes ${start}-${body.length - 1}/${body.length}`,
+    })
+    response.end(body.subarray(start))
+  })
+  await new Promise((resolvePromise) => server.listen(0, '127.0.0.1', resolvePromise))
+  try {
+    const address = server.address()
+    const key = pythonAssetKey()
+    const file = 'resumable-python.tar.gz'
+    versions.components.python.assets[key] = {
+      file,
+      url: `http://127.0.0.1:${address.port}/${file}`,
+      sha256: createHash('sha256').update(body).digest('hex'),
+      size: body.length,
+    }
+    await assert.rejects(ensurePythonRuntime({ installRoot, manifest: versions, env: {} }))
+    const partial = join(installRoot, 'downloads', 'python', `${file}.download`)
+    const partialSize = (await stat(partial)).size
+    assert.ok(partialSize > 0 && partialSize < body.length)
+    await assert.rejects(ensurePythonRuntime({ installRoot, manifest: versions, env: {} }))
+    assert.equal(resumedRange, `bytes=${partialSize}-`)
+    assert.deepEqual(await readFile(join(installRoot, 'downloads', 'python', file)), body)
+  } finally {
+    await new Promise((resolvePromise) => server.close(resolvePromise))
+    await rm(installRoot, { recursive: true, force: true })
+  }
 })
 
 test('pins the publicly published CLI artifacts', async () => {
@@ -43,10 +155,11 @@ test('pins the publicly published CLI artifacts', async () => {
   assert.equal(versions.components.cli.checksums.sha256, '1494d7f13af18bef321995509058a1ab43b1d0b2e9f9ea08230dd78028090221')
 })
 
-test('ships a Linux experience entry that enforces native filesystem prerequisites', async () => {
+test('ships a Linux experience entry with private Python and native filesystem prerequisites', async () => {
   const script = await readFile(join(root, 'experience', 'linux', 'prepare.sh'), 'utf8')
-  assert.match(script, /Node 22\.19\+/)
-  assert.match(script, /Python 3\.11\+/)
+  assert.match(script, /Node \^22\.19\.0 or >=24/)
+  assert.doesNotMatch(script, /require_command python3/)
+  assert.match(script, /private managed 3\.12\.13/)
   assert.match(script, /Java 17\+/)
   assert.match(script, /\/mnt\//)
   assert.match(script, /@deepseek-ai\/dsh@/)
@@ -58,12 +171,22 @@ test('rejects Java versions below the Launcher minimum', () => {
   assert.equal(compatible({ available: true, output: 'openjdk version "17.0.12"' }, '17.0').available, true)
 })
 
+test('accepts only the DeepSeek Harness Node engine lines', () => {
+  assert.equal(compatibleNode('22.18.0'), false)
+  assert.equal(compatibleNode('22.19.0'), true)
+  assert.equal(compatibleNode('22.22.0'), true)
+  assert.equal(compatibleNode('23.1.0'), false)
+  assert.equal(compatibleNode('24.0.0'), true)
+  assert.equal(compatibleNode('26.0.0'), true)
+})
+
 test('exposes persistent initialization progress to the gateway and web client', async () => {
   const gateway = await readFile(join(root, 'lib', 'index.js'), 'utf8')
   const client = await readFile(join(root, 'lib', 'client.js'), 'utf8')
   const onboarding = await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'scripts', 'onboarding.py'), 'utf8')
   assert.match(gateway, /operation-progress\.json/)
   assert.match(gateway, /--progress-file/)
+  assert.match(gateway, /progress\?\.operationId === operation\.id/)
   assert.match(client, /role: 'progressbar'/)
   assert.match(client, /foggy-progress-fill/)
   assert.match(onboarding, /PROGRESS_SCHEMA = "foggy-deepseek-onboarding-progress\/v1"/)
@@ -97,6 +220,8 @@ test('exposes public-beta recovery, diagnostics, and onboarding progress control
   const gateway = await readFile(join(root, 'lib', 'index.js'), 'utf8')
   const client = await readFile(join(root, 'lib', 'client.js'), 'utf8')
   const onboarding = await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'scripts', 'onboarding.py'), 'utf8')
+  const remoteDescriptor = await readFile(join(root, 'lib', 'remote-descriptor.js'), 'utf8')
+  assert.match(gateway, /repairPython/)
   assert.match(gateway, /repairCli/)
   assert.match(gateway, /migrateProfiles/)
   assert.match(gateway, /foggy-deepseek-diagnostics\/v1/)
@@ -105,4 +230,5 @@ test('exposes public-beta recovery, diagnostics, and onboarding progress control
   assert.match(onboarding, /profile-migration-status/)
   assert.match(onboarding, /already-running-verified/)
   assert.match(onboarding, /workspaceBindings/)
+  assert.match(remoteDescriptor, /descriptor\('repairPython'\)/)
 })

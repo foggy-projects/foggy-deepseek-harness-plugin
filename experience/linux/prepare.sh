@@ -3,7 +3,7 @@ set -euo pipefail
 
 DSH_VERSION="0.1.1-rc.2"
 PNPM_VERSION="11.7.0"
-PLUGIN_VERSION="0.4.0-beta.4"
+PLUGIN_VERSION="0.4.0-beta.8"
 PLUGIN_REF="v${PLUGIN_VERSION}"
 PLUGIN_REPOSITORY="https://github.com/foggy-projects/foggy-deepseek-harness-plugin.git"
 
@@ -62,22 +62,19 @@ require_command() {
 
 [[ "$(uname -s)" == "Linux" ]] || fail "this entry supports Linux and WSL2 only"
 case "$(uname -m)" in
-  x86_64|amd64) ;;
-  *) fail "validated architecture is x86_64; detected $(uname -m)" ;;
+  x86_64|amd64|aarch64|arm64) ;;
+  *) fail "supported architectures are x86_64 and arm64; detected $(uname -m)" ;;
 esac
 
 require_command node
 require_command npm
-require_command python3
 require_command java
 require_command git
 require_command df
+require_command tar
 
-node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 22 || (major === 22 && minor < 19)) process.exit(1)' \
-  || fail "Node 22.19+ required; detected $(node --version 2>/dev/null || echo unknown)"
-python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
-  || fail "Python 3.11+ required; detected $(python3 --version 2>/dev/null || echo unknown)"
-python3 -m venv --help >/dev/null 2>&1 || fail "Python venv support is required"
+node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (!((major === 22 && minor >= 19) || major >= 24)) process.exit(1)' \
+  || fail "Node ^22.19.0 or >=24 required; detected $(node --version 2>/dev/null || echo unknown)"
 
 java_major="$(java -version 2>&1 | awk -F'[\".]' '/version/ { print $2; exit }')"
 [[ "$java_major" =~ ^[0-9]+$ ]] || fail "could not detect Java version"
@@ -121,6 +118,7 @@ Foggy Linux experience plan
   DSH:              $DSH_VERSION
   pnpm:             $PNPM_VERSION
   Foggy Bundle:     $PLUGIN_VERSION
+  Python:           private managed 3.12.13 (downloaded during Foggy initialization)
   Experience root:  $experience_root
   Project root:     $project_root
   Filesystem:       Linux-native

@@ -47,7 +47,7 @@ ACTIVE_PROGRESS: "ProgressReporter | None" = None
 
 
 class ProgressReporter:
-    total_steps = 6
+    total_steps = 7
 
     def __init__(self, path: str | None, operation_id: str | None, kind: str) -> None:
         self.path = Path(path).expanduser() if path else None
@@ -996,7 +996,7 @@ def install_command(args: argparse.Namespace) -> dict:
         "workspaceMode": "dsh-session-cwd",
         "versions": {name: value.get("version") for name, value in components.items()},
         "repairComponent": repair_component,
-        "operations": ["install isolated CLI", "verify Launcher assets", "install global analysis Skill", "write install state"],
+        "operations": ["verify private Python", "install isolated CLI", "verify Launcher assets", "install global analysis Skill", "write install state"],
         "productionReady": False,
     }
     if args.dry_run:
@@ -1008,7 +1008,7 @@ def install_command(args: argparse.Namespace) -> dict:
         getattr(args, "operation_kind", "initialize"),
     )
     ACTIVE_PROGRESS = progress
-    progress.update("preflight", 0, "Checking prerequisites")
+    progress.update("python", 1, "Managed Python ready", fraction=1.0, current_file=sys.executable)
     if sys.version_info < (3, 11):
         raise OnboardingError(f"Python 3.11+ required, got {sys.version.split()[0]}")
     install_root.mkdir(parents=True, exist_ok=True)
@@ -1020,19 +1020,19 @@ def install_command(args: argparse.Namespace) -> dict:
     cli_assets = [cli_component[role] for role in ("wheel", "checksums")]
     for index, asset in enumerate(cli_assets):
         progress.update(
-            "cli", 1, "Downloading and verifying CLI",
+            "cli", 2, "Downloading and verifying CLI",
             fraction=index / len(cli_assets), current_file=asset["file"],
             completed_files=index, total_files=len(cli_assets),
         )
         verified.append(materialize(
             asset, downloads / "cli" / asset["file"], cache_dirs,
-            progress=progress, progress_phase="cli", progress_step=1,
+            progress=progress, progress_phase="cli", progress_step=2,
             progress_index=index, progress_total=len(cli_assets),
             progress_message="Downloading and verifying CLI",
             replace_corrupt=repair_component == "cli",
         ))
         progress.update(
-            "cli", 1, "Downloading and verifying CLI",
+            "cli", 2, "Downloading and verifying CLI",
             fraction=(index + 1) / len(cli_assets), current_file=asset["file"],
             completed_files=index + 1, total_files=len(cli_assets),
         )
@@ -1042,13 +1042,13 @@ def install_command(args: argparse.Namespace) -> dict:
     if checksum_entries.get(wheel_asset["file"]) != wheel_asset["sha256"]:
         raise OnboardingError("Pinned CLI SHA256SUMS does not match the pinned wheel hash")
     if args.skip_cli_install:
-        progress.update("cli", 1, "Using existing CLI", fraction=0.65, current_file="foggy-runtime")
+        progress.update("cli", 2, "Using existing CLI", fraction=0.65, current_file="foggy-runtime")
         cli_command = normalized(args.cli_command or shutil.which("foggy-runtime") or "")
         if not cli_command.is_file():
             raise OnboardingError("--skip-cli-install requires --cli-command or foggy-runtime on PATH")
         cli_mode = "external"
     else:
-        progress.update("cli", 1, "Installing CLI", fraction=0.65, current_file="Python virtual environment")
+        progress.update("cli", 2, "Installing CLI", fraction=0.65, current_file="Python virtual environment")
         python_path = venv_python(install_root)
         if not python_path.is_file():
             venv.EnvBuilder(with_pip=True).create(install_root / "venv")
@@ -1063,66 +1063,66 @@ def install_command(args: argparse.Namespace) -> dict:
         )
         cli_command = venv_cli(install_root)
         cli_mode = "managed-venv"
-    progress.update("cli", 1, "Verifying CLI version", fraction=0.9, current_file="foggy-runtime")
+    progress.update("cli", 2, "Verifying CLI version", fraction=0.9, current_file="foggy-runtime")
     cli_version = command_result([str(cli_command), "--version"], check=True)
     actual_cli_version = version_tuple(cli_version["stdout"])[:3]
     pinned_cli_version = version_tuple(cli_component["version"])[:3]
     version_matches = actual_cli_version >= pinned_cli_version if cli_mode == "external" else actual_cli_version == pinned_cli_version
     if not version_matches:
         raise OnboardingError(f"Unexpected CLI version: {cli_version['stdout']}")
-    progress.update("cli", 1, "CLI ready", fraction=1.0)
+    progress.update("cli", 2, "CLI ready", fraction=1.0)
 
     launcher_dir = install_root / "launcher"
     launcher_assets = components["launcher"]["assets"]
     for index, asset in enumerate(launcher_assets):
         progress.update(
-            "launcher", 2, "Downloading and verifying Launcher",
+            "launcher", 3, "Downloading and verifying Launcher",
             fraction=index / len(launcher_assets), current_file=asset["file"],
             completed_files=index, total_files=len(launcher_assets),
         )
         verified.append(materialize(
             asset, launcher_dir / asset["file"], cache_dirs,
-            progress=progress, progress_phase="launcher", progress_step=2,
+            progress=progress, progress_phase="launcher", progress_step=3,
             progress_index=index, progress_total=len(launcher_assets),
             progress_message="Downloading and verifying Launcher",
             replace_corrupt=repair_component == "launcher",
         ))
         progress.update(
-            "launcher", 2, "Downloading and verifying Launcher",
+            "launcher", 3, "Downloading and verifying Launcher",
             fraction=(index + 1) / len(launcher_assets), current_file=asset["file"],
             completed_files=index + 1, total_files=len(launcher_assets),
         )
     if os.name != "nt":
         (launcher_dir / "start-foggy-runtime.sh").chmod(0o755)
-    progress.update("launcher", 2, "Launcher ready", fraction=1.0)
+    progress.update("launcher", 3, "Launcher ready", fraction=1.0)
 
     analysis_assets = components["analysisSkill"]["assets"]
     for index, asset in enumerate(analysis_assets):
         progress.update(
-            "analysis-skill", 3, "Downloading and verifying analysis Skill",
+            "analysis-skill", 4, "Downloading and verifying analysis Skill",
             fraction=index / len(analysis_assets), current_file=asset["file"],
             completed_files=index, total_files=len(analysis_assets),
         )
         verified.append(materialize(
             asset, downloads / "skill" / asset["file"], cache_dirs,
-            progress=progress, progress_phase="analysis-skill", progress_step=3,
+            progress=progress, progress_phase="analysis-skill", progress_step=4,
             progress_index=index, progress_total=len(analysis_assets),
             progress_message="Downloading and verifying analysis Skill",
             replace_corrupt=repair_component == "analysis-skill",
         ))
         progress.update(
-            "analysis-skill", 3, "Downloading and verifying analysis Skill",
+            "analysis-skill", 4, "Downloading and verifying analysis Skill",
             fraction=(index + 1) / len(analysis_assets), current_file=asset["file"],
             completed_files=index + 1, total_files=len(analysis_assets),
         )
     zip_asset = next(item for item in analysis_assets if item["role"] == "zip")
-    progress.update("analysis-skill", 3, "Installing analysis Skill", fraction=0.9, current_file=zip_asset["file"])
+    progress.update("analysis-skill", 4, "Installing analysis Skill", fraction=0.9, current_file=zip_asset["file"])
     analysis_skill = install_analysis_skill(
         downloads / "skill" / zip_asset["file"], install_root, components["analysisSkill"]["version"],
         zip_asset["sha256"], versions["packageVersion"], args.replace_skill or repair_component == "analysis-skill",
     )
-    progress.update("analysis-skill", 3, "Analysis Skill ready", fraction=1.0)
-    progress.update("workspace-skills", 4, "Registering native DSH Skills", fraction=0.1)
+    progress.update("analysis-skill", 4, "Analysis Skill ready", fraction=1.0)
+    progress.update("workspace-skills", 5, "Registering native DSH Skills", fraction=0.1)
     onboarding_skill = {
         "path": str(skill_root()),
         "version": versions["packageVersion"],
@@ -1130,7 +1130,7 @@ def install_command(args: argparse.Namespace) -> dict:
         "action": "provided-by-plugin",
         "provider": "foggy-managed-skills",
     }
-    progress.update("workspace-skills", 4, "Native DSH Skills ready", fraction=1.0)
+    progress.update("workspace-skills", 5, "Native DSH Skills ready", fraction=1.0)
     state = {
         "schemaVersion": STATE_SCHEMA,
         "installedAt": now_utc(),
@@ -1139,6 +1139,11 @@ def install_command(args: argparse.Namespace) -> dict:
         "dataRoot": str(data_root),
         "profileStore": str(profile_store),
         "workspaceMode": "dsh-session-cwd",
+        "python": {
+            "version": components["python"]["version"],
+            "command": sys.executable,
+            "mode": os.environ.get("FOGGY_ONBOARDING_PYTHON_SOURCE", "managed"),
+        },
         "cli": {"version": cli_component["version"], "command": str(cli_command), "mode": cli_mode},
         "launcher": {"version": components["launcher"]["version"], "path": str(launcher_dir)},
         "skills": {"onboarding": onboarding_skill, "analysis": analysis_skill},
@@ -1146,7 +1151,7 @@ def install_command(args: argparse.Namespace) -> dict:
         "securityMode": versions["defaults"]["securityMode"],
         "productionReady": False,
     }
-    progress.update("state", 5, "Writing install state", fraction=0.2, current_file="install-state.json")
+    progress.update("state", 6, "Writing install state", fraction=0.2, current_file="install-state.json")
     atomic_json(install_root / "install-state.json", state)
     progress.finish()
     ACTIVE_PROGRESS = None

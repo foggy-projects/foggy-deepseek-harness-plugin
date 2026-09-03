@@ -20,6 +20,10 @@ copy this Skill into the current workspace.
   workspace as `--project-root`. The absence of `foggy-runtime` from `PATH` is not evidence that the
   managed CLI is missing; the plugin intentionally installs it in an isolated environment and records
   its absolute command in the global install state.
+- The plugin downloads and verifies a pinned private Python runtime before running this Skill. Do not
+  search for, install, or repair a system Python. Wrappers resolve the interpreter recorded in the
+  global install state. If private Python is missing, use the plugin's Python repair action. Only use
+  `FOGGY_PYTHON` or `FOGGY_ONBOARDING_PYTHON` when the user explicitly supplied an advanced override.
 - Do not independently download or reinstall the CLI. If the global install state, managed marker, or
   analysis Skill is missing or invalid, ask the user to open the Foggy plugin settings and use
   the matching component repair action. Repair restores managed components and invalidates the
@@ -71,9 +75,11 @@ For every new-database onboarding session, this Skill is the orchestration autho
 
 1. Run `scripts/doctor.ps1 --project-root <current-session-workspace>` on Windows or
    `bash scripts/doctor.sh --project-root <current-session-workspace>` on Linux.
-2. If the pinned CLI, Launcher, or global managed analysis Skill is missing, use the Foggy
-   plugin's Repair action. Use the matching install script only when the plugin UI is unavailable;
-   use `--dry-run` first when paths or permissions are uncertain.
+2. If private Python, the pinned CLI, Launcher, or global managed analysis Skill is missing, use the
+   Foggy plugin's matching Repair action. First-time Python bootstrap requires the plugin UI unless
+   the user explicitly supplies `FOGGY_ONBOARDING_PYTHON`. Use a matching install script only after
+   private Python exists and the plugin UI is unavailable; use `--dry-run` first when paths or
+   permissions are uncertain.
 3. Run `runtime-start` and require successful `wait-ready` plus `capabilities`. Record engine,
    Runtime API version, schema version, security mode, URL, namespace, PID, and evidence path. If the
    recorded Runtime is already running, `runtime-start` verifies and reuses it instead of starting a

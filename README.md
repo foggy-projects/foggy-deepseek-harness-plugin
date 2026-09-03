@@ -2,13 +2,19 @@
 
 This package is the lightweight DeepSeek Harness Bundle for Foggy's Java data
 analysis engine. Installing the Bundle adds a native Foggy tab under **Settings
-→ Plugins**. The large Launcher and the isolated CLI environment are downloaded
-only when the user selects **Initialize Foggy**.
+→ Plugins**. The private Python runtime, Launcher, and isolated CLI environment
+are downloaded only when the user selects **Initialize Foggy**.
+
+DeepSeek Harness uses a system Node.js (`^22.19.0 || >=24.0.0`) and Foggy's Java
+Launcher uses a system Java 17+. Foggy manages its own pinned Python 3.12 runtime
+inside the per-user component directory; it does not require a system Python,
+modify `PATH`, or register Python globally. Advanced users may explicitly set
+`FOGGY_PYTHON` to a compatible Python 3.11+ executable.
 
 ## Local beta installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.7.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.8.tgz
 ```
 
 Restart `dsh web`, open Settings → Plugins → Foggy Data Analysis, and initialize
@@ -44,8 +50,8 @@ persistent store. A completed profile can also be bound non-destructively to an
 additional DSH workspace when its reviewed connection contract and published
 semantic digest are unchanged.
 
-CLI, Launcher, the analysis Skill, install state, and Runtime state live in the
-user-level Foggy component directories. The managed CLI is intentionally isolated
+Private Python, CLI, Launcher, the analysis Skill, install state, and Runtime
+state live in the user-level Foggy component directories. The managed CLI is intentionally isolated
 and does not need to be on `PATH`. **Re-download / Repair** verifies the global
 analysis Skill, backs up modified or outdated managed content, restores it, and
 invalidates DSH's Skill catalog. The onboarding Skill is bundled with the plugin
@@ -53,7 +59,7 @@ and is restored by reinstalling or upgrading the plugin package.
 
 The Foggy settings tab shows the persisted database/semantic onboarding stages,
 offers pinned checks and repair for CLI, Launcher, and the managed analysis
-Skill, and exports a private redacted diagnostics report. Runtime start is
+Skill, private Python, and exports a private redacted diagnostics report. Runtime start is
 idempotent: an already-recorded process is verified with `wait-ready` and
 `capabilities` instead of being treated as a failed second start.
 
@@ -63,6 +69,9 @@ a production service.
 
 See [`docs/PUBLIC-BETA-READINESS.md`](./docs/PUBLIC-BETA-READINESS.md) for the
 tested public Beta scope, release gates, and stable-release blockers.
+Native Windows acceptance instructions are in
+[`docs/WINDOWS-BETA-ACCEPTANCE.md`](./docs/WINDOWS-BETA-ACCEPTANCE.md); database
+credentials intentionally remain outside the public repository.
 
 ## Linux and WSL2 experience
 

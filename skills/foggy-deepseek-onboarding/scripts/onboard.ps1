@@ -1,4 +1,4 @@
 $ErrorActionPreference = "Stop"
-$pythonCommand = if ($env:FOGGY_ONBOARDING_PYTHON) { $env:FOGGY_ONBOARDING_PYTHON } else { "python" }
-& $pythonCommand (Join-Path $PSScriptRoot "onboarding.py") @args
+& (Join-Path $PSScriptRoot 'invoke-onboarding.ps1') @args
+exit $LASTEXITCODE
 exit $LASTEXITCODE
