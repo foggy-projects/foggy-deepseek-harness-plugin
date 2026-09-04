@@ -1,10 +1,10 @@
-# Public beta readiness: 0.4.0-beta.11
+# Public beta readiness: 0.4.0-beta.12
 
 Assessment date: 2026-09-04
 
 ## Verdict
 
-`0.4.0-beta.11` is suitable for a scoped public beta on Windows 10/11 x64 and
+`0.4.0-beta.12` is suitable for a scoped public beta on Windows 10/11 x64 and
 Linux/WSL2 x64. It is not a general-availability release.
 
 The plugin package stays small and downloads large components only during
@@ -21,16 +21,18 @@ system PATH, registry, or a user's existing Python installation.
 - The component installer code is unchanged from beta.9, whose Windows x64 run
   completed a cold Python download, checksum verification, extraction,
   initialization, forced Python repair, and doctor run.
-- DeepSeek Harness `0.1.2-rc.1` loaded the beta.11 candidate Bundle, web client,
+- DeepSeek Harness `0.1.2-rc.1` loaded the beta.12 candidate Bundle, web client,
   remote status service, and native Skill provider on both Windows and WSL2.
 - WSL2 reported the existing managed Python, CLI, Launcher, and analysis Skill
   as ready; an isolated Windows profile correctly reported its fresh component
   state and rejected the host's Java 12 as below the Java 17 prerequisite.
 - The UI reported Python 3.12.13 as `Foggy private`, and CLI 0.1.23, Launcher
-  0.1.18, analysis Skill 0.1.17, and onboarding Skill 0.4.0-beta.11 as installed.
+  0.1.18, analysis Skill 0.1.17, and onboarding Skill 0.4.0-beta.12 as installed.
 - Runtime startup now reports the current phase, elapsed/timeout seconds, and a
   bounded progress value. A real WSL2 launch reached readiness in 13.4 seconds;
   a forced timeout recorded failure evidence and cleaned up the Java process.
+- Diagnostic export success remains visible alongside a prior Runtime startup
+  error, including the generated local JSON path.
 - Interrupted downloads resume with HTTP Range when the server supports it;
   downloaded artifacts are not trusted until the complete SHA256 matches.
 - Windows progress writes tolerate transient sharing violations without losing
