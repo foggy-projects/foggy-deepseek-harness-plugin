@@ -62,6 +62,16 @@ are authoritative; do not copy the Skill into the current workspace.
 7. When the model works, recommend committing the model directory to the user's own Git repository.
    Do not initialize a repository, commit, push, or create a remote unless the user requests it.
 
+For a normal end-to-end request, take the documented composite-command path first. Do not inspect
+`onboarding.py`, enumerate CLI help, search installation directories, load the sales-drop example, or
+fetch online syntax documentation before trying that path. Use those troubleshooting or reference
+sources only when a concrete error or unsupported modeling requirement makes them relevant.
+
+Use the user's business terms to narrow schema discovery with `--pattern` or repeated `--table` when
+there are clear candidates. Otherwise keep the bounded default, then inspect only the few tables and
+columns needed for the requested model. Full results belong in the evidence files; retain concise
+summaries and paths in the conversation instead of repeatedly reading complete JSON artifacts.
+
 Read [references/onboarding-workflow.md](references/onboarding-workflow.md) for the wrapper commands and
 credential shapes. Use `foggy-ai-analysis` references for detailed TM/QM modeling and query tuning.
 

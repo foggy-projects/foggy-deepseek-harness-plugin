@@ -220,6 +220,56 @@ class OnboardingUnitTests(unittest.TestCase):
         self.assertNotIn("password", persisted)
         self.assertNotIn("development-secret", json.dumps(persisted))
 
+    def test_persisted_inline_credential_mode_remains_stable_when_resumed(self):
+        persisted = onboarding.persisted_connection({
+            "schemaVersion": onboarding.CONNECTION_SCHEMA,
+            "connectionMode": "legacy-inline",
+            "credentialMode": "inline-development",
+            "profile": "demo",
+            "name": "demo-mysql",
+            "type": "mysql",
+            "jdbcUrl": "jdbc:mysql://127.0.0.1/demo",
+            "username": "demo",
+            "passwordEnv": None,
+            "namespace": "demo",
+            "schemas": [],
+            "modelsDir": "models",
+            "readOnlyRecommended": True,
+        })
+        self.assertEqual(persisted["credentialMode"], "inline-development")
+
+    def test_datasource_test_retries_only_transient_pool_timeout(self):
+        success = {"success": True, "data": {"connected": True}}
+        with (
+            patch.object(
+                onboarding,
+                "cli_json",
+                side_effect=[
+                    onboarding.OnboardingError("Connection is not available, request timed out after 10000ms"),
+                    success,
+                ],
+            ) as cli,
+            patch.object(onboarding.time, "sleep") as sleep,
+        ):
+            result = onboarding.datasource_test_with_retry({}, {}, "demo", "demo-mysql")
+        self.assertEqual(cli.call_count, 2)
+        sleep.assert_called_once_with(1.0)
+        self.assertEqual(result["onboardingRetry"]["attempts"], 2)
+
+    def test_datasource_test_does_not_retry_authentication_failure(self):
+        with (
+            patch.object(
+                onboarding,
+                "cli_json",
+                side_effect=onboarding.OnboardingError("Access denied for user demo"),
+            ) as cli,
+            patch.object(onboarding.time, "sleep") as sleep,
+        ):
+            with self.assertRaisesRegex(onboarding.OnboardingError, "Access denied"):
+                onboarding.datasource_test_with_retry({}, {}, "demo", "demo-mysql")
+        cli.assert_called_once()
+        sleep.assert_not_called()
+
     def test_datasource_configure_submits_inline_password_without_cli_or_output_leak(self):
         with tempfile.TemporaryDirectory() as temporary:
             data_root = Path(temporary)

@@ -73,6 +73,14 @@ tables list -> bounded schema inspection
 
 It does not stop or restart Runtime. Repeated calls reuse completed checkpoints when the public
 connection contract is unchanged. Inline password values are excluded from the comparison.
+Transient connection-pool readiness timeouts are retried a small, bounded number of times; invalid
+credentials, invalid URLs, and other configuration errors fail immediately.
+
+When the user's request clearly identifies a business subject or likely tables, add `--pattern` or
+one or more `--table` arguments so discovery remains focused. Do not enumerate CLI help, inspect the
+wrapper source, load unrelated examples, or fetch online documentation on the successful normal path.
+Keep full command payloads in the numbered evidence files and use only their concise result fields in
+the conversation.
 
 After discovery, use `foggy-ai-analysis` to create TM/QM drafts from actual tables, columns, keys,
 small read-only samples when useful, and the user's business questions. Keep the files in the current

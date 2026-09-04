@@ -26,5 +26,7 @@ if (-not $pythonCommand -or -not (Test-Path -LiteralPath $pythonCommand)) {
     exit 1
 }
 
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
 & $pythonCommand (Join-Path $PSScriptRoot 'onboarding.py') @OnboardingArgs
 exit $LASTEXITCODE

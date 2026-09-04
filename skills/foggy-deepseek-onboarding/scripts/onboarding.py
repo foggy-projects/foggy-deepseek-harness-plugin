@@ -993,12 +993,15 @@ def validate_connection(payload: dict) -> dict:
 def persisted_connection(connection: dict) -> dict:
     """Return the resumable connection contract without an inline development password."""
     persisted = {key: value for key, value in connection.items() if key != "password"}
-    persisted["credentialMode"] = (
-        "inline-development" if connection.get("password") is not None
-        else "agent-environment" if connection.get("passwordEnv")
-        else "opaque-profile" if connection.get("connectionMode") == "opaque-profile"
-        else "none"
-    )
+    credential_mode = connection.get("credentialMode")
+    if credential_mode not in {"inline-development", "agent-environment", "opaque-profile", "none"}:
+        credential_mode = (
+            "inline-development" if connection.get("password") is not None
+            else "agent-environment" if connection.get("passwordEnv")
+            else "opaque-profile" if connection.get("connectionMode") == "opaque-profile"
+            else "none"
+        )
+    persisted["credentialMode"] = credential_mode
     return persisted
 
 
@@ -1797,6 +1800,50 @@ def cli_json(install_state: dict, runtime_state: dict, namespace: str, command: 
     return payload
 
 
+TRANSIENT_DATASOURCE_TEST_MARKERS = (
+    "connection is not available",
+    "connection pool",
+    "request timed out",
+    "timeout waiting for connection",
+)
+
+
+def datasource_test_with_retry(
+    install_state: dict,
+    runtime_state: dict,
+    namespace: str,
+    datasource_name: str,
+    *,
+    attempts: int = 3,
+    initial_delay_seconds: float = 1.0,
+) -> dict:
+    """Retry only transient pool/readiness failures; authentication and configuration failures fail fast."""
+    for attempt in range(1, attempts + 1):
+        try:
+            result = cli_json(
+                install_state,
+                runtime_state,
+                namespace,
+                ["datasources", "test", datasource_name],
+                "datasources test",
+            )
+            if attempt > 1:
+                result = {
+                    **result,
+                    "onboardingRetry": {
+                        "attempts": attempt,
+                        "reason": "transient-datasource-readiness",
+                    },
+                }
+            return result
+        except OnboardingError as exc:
+            transient = any(marker in str(exc).lower() for marker in TRANSIENT_DATASOURCE_TEST_MARKERS)
+            if not transient or attempt == attempts:
+                raise
+            time.sleep(initial_delay_seconds * attempt)
+    raise AssertionError("unreachable")
+
+
 def runtime_api_json(
     runtime_state: dict,
     namespace: str,
@@ -2092,9 +2139,8 @@ def datasource_verify_command(args: argparse.Namespace) -> dict:
         raise OnboardingError("Datasource is not configured; run datasource-configure --apply first")
     connection = state["connection"]
     namespace = connection["namespace"]
-    tested = redact_connection_material(cli_json(
-        install_state, runtime_state, namespace,
-        ["datasources", "test", connection["name"]], "datasources test",
+    tested = redact_connection_material(datasource_test_with_retry(
+        install_state, runtime_state, namespace, connection["name"],
     ))
     if not args.bind:
         mark_step(state, "datasourceVerified", "waiting-for-binding", connectionTested=True)
@@ -3425,6 +3471,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
     args = build_parser().parse_args()
     try:
         result = args.handler(args)
