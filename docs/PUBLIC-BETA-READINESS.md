@@ -1,10 +1,10 @@
-# Public beta readiness: 0.4.0-beta.8
+# Public beta readiness: 0.4.0-beta.9
 
-Assessment date: 2026-09-03
+Assessment date: 2026-09-04
 
 ## Verdict
 
-`0.4.0-beta.8` is suitable for a scoped public beta on Windows 10/11 x64 and
+`0.4.0-beta.9` is suitable for a scoped public beta on Windows 10/11 x64 and
 Linux/WSL2 x64. It is not a general-availability release.
 
 The plugin package stays small and downloads large components only during
@@ -23,10 +23,12 @@ system PATH, registry, or a user's existing Python installation.
 - Linux/WSL2 x64 completed managed Python extraction, initialization, and a live
   DeepSeek Harness `0.1.1-rc.2` UI status check.
 - The UI reported Python 3.12.13 as `Foggy private`, and CLI 0.1.23, Launcher
-  0.1.18, analysis Skill 0.1.17, and onboarding Skill 0.4.0-beta.8 as installed.
+  0.1.18, analysis Skill 0.1.17, and onboarding Skill 0.4.0-beta.9 as installed.
 - Interrupted downloads resume with HTTP Range when the server supports it;
   downloaded artifacts are not trusted until the complete SHA256 matches.
-- Automated regression passed under Node 22.23.2: 15 Node tests and 8 Python
+- Windows progress writes tolerate transient sharing violations without losing
+  the previous valid progress document or leaving temporary files behind.
+- Automated regression passed under Node 22.23.2: 17 Node tests and 10 Python
   tests, plus shell and PowerShell syntax checks.
 
 ## Beta boundaries

@@ -16,6 +16,40 @@ SPEC.loader.exec_module(onboarding)
 
 
 class OnboardingUnitTests(unittest.TestCase):
+    def test_atomic_json_retries_transient_windows_style_lock(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "operation-progress.json"
+            target.write_text('{"old": true}', encoding="utf-8")
+            real_replace = os.replace
+            attempts = 0
+
+            def flaky_replace(source, destination):
+                nonlocal attempts
+                attempts += 1
+                if attempts < 4:
+                    raise PermissionError(13, "temporarily locked", str(destination))
+                real_replace(source, destination)
+
+            with patch.object(onboarding.os, "replace", side_effect=flaky_replace), patch.object(onboarding.time, "sleep"):
+                onboarding.atomic_json(target, {"success": True})
+
+            self.assertEqual(attempts, 4)
+            self.assertEqual(json.loads(target.read_text(encoding="utf-8")), {"success": True})
+            self.assertEqual([path.name for path in Path(temporary).iterdir()], ["operation-progress.json"])
+
+    def test_atomic_json_preserves_previous_file_when_lock_persists(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "operation-progress.json"
+            target.write_text('{"old": true}', encoding="utf-8")
+            locked = PermissionError(13, "locked", str(target))
+            with patch.object(onboarding.os, "replace", side_effect=locked) as replace, patch.object(onboarding.time, "sleep"):
+                with self.assertRaises(PermissionError):
+                    onboarding.atomic_json(target, {"success": True})
+
+            self.assertEqual(replace.call_count, 12)
+            self.assertEqual(json.loads(target.read_text(encoding="utf-8")), {"old": True})
+            self.assertEqual([path.name for path in Path(temporary).iterdir()], ["operation-progress.json"])
+
     def test_persistent_profile_store_is_private_and_overrideable(self):
         with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, {}, clear=False):
             os.environ.pop("FOGGY_RUNTIME_PROFILE_STORE", None)

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import errno
 import hashlib
 import json
 import os
@@ -337,11 +338,39 @@ def venv_cli(install_root: Path) -> Path:
     return install_root / "venv" / ("Scripts/foggy-runtime.exe" if os.name == "nt" else "bin/foggy-runtime")
 
 
+def replace_with_retry(source: Path, destination: Path, attempts: int = 12) -> None:
+    transient_errno = {errno.EACCES, errno.EBUSY, errno.EPERM}
+    transient_winerror = {5, 32, 33}
+    for attempt in range(attempts):
+        try:
+            os.replace(source, destination)
+            return
+        except OSError as exc:
+            transient = exc.errno in transient_errno or getattr(exc, "winerror", None) in transient_winerror
+            if not transient or attempt == attempts - 1:
+                raise
+            time.sleep(min(0.025 * (2 ** attempt), 0.4))
+
+
 def atomic_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(temporary, path)
+    handle = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    )
+    temporary = Path(handle.name)
+    try:
+        with handle:
+            json.dump(payload, handle, indent=2, ensure_ascii=False)
+            handle.flush()
+            os.fsync(handle.fileno())
+        replace_with_retry(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def skill_tree_digest(root: Path) -> str:

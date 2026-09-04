@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { access, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { access, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,12 +8,13 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { compatible, compatibleNode, versionParts } from '../lib/version.js'
 import { ensurePythonRuntime, managedPythonExecutable, probePythonRuntime, pythonAssetKey, selectPythonAsset } from '../lib/python-runtime.js'
+import { writeJsonAtomic } from '../lib/atomic-json.js'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.0-beta.8')
+  assert.equal(pkg.version, '0.4.0-beta.9')
   assert.equal(pkg.engines.node, '^22.19.0 || >=24.0.0')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
@@ -30,13 +31,13 @@ test('bundle patch mounts the dual-face Foggy package', async () => {
 test('documents the pnpm workspace-root install required by DSH rc.2', async () => {
   const readme = await readFile(join(root, 'README.md'), 'utf8')
   assert.match(readme, /dsh plugin --profile web add --workspace-root/)
-  assert.match(readme, /0\.4\.0-beta\.8\.tgz/)
+  assert.match(readme, /0\.4\.0-beta\.9\.tgz/)
   assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@beta/)
 })
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.0-beta.8')
+  assert.equal(versions.packageVersion, '0.4.0-beta.9')
   assert.equal(versions.components.python.version, '3.12.13')
   assert.equal(versions.components.cli.version, '0.1.23')
   assert.equal(versions.components.launcher.version, '0.1.18')
@@ -146,6 +147,48 @@ test('resumes an interrupted managed Python download before verification', async
   } finally {
     await new Promise((resolvePromise) => server.close(resolvePromise))
     await rm(installRoot, { recursive: true, force: true })
+  }
+})
+
+test('retries transient atomic JSON replacement failures without leaving temp files', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'foggy-atomic-json-retry-'))
+  const target = join(directory, 'operation-progress.json')
+  let attempts = 0
+  try {
+    await writeFile(target, '{"old":true}')
+    await writeJsonAtomic(target, { success: true }, {
+      replace: async (source, destination) => {
+        attempts += 1
+        if (attempts < 4) throw Object.assign(new Error('temporarily locked'), { code: 'EPERM' })
+        await rename(source, destination)
+      },
+      sleep: async () => {},
+    })
+    assert.equal(attempts, 4)
+    assert.deepEqual(JSON.parse(await readFile(target, 'utf8')), { success: true })
+    assert.deepEqual(await readdir(directory), ['operation-progress.json'])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('preserves the previous JSON when a replacement remains locked', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'foggy-atomic-json-locked-'))
+  const target = join(directory, 'operation-progress.json')
+  try {
+    await writeFile(target, '{"old":true}')
+    await assert.rejects(
+      writeJsonAtomic(target, { success: true }, {
+        attempts: 3,
+        replace: async () => { throw Object.assign(new Error('locked'), { code: 'EPERM' }) },
+        sleep: async () => {},
+      }),
+      /locked/,
+    )
+    assert.deepEqual(JSON.parse(await readFile(target, 'utf8')), { old: true })
+    assert.deepEqual(await readdir(directory), ['operation-progress.json'])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
   }
 })
 
