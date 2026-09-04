@@ -48,20 +48,35 @@ ACTIVE_PROGRESS: "ProgressReporter | None" = None
 
 
 class ProgressReporter:
-    total_steps = 7
-
-    def __init__(self, path: str | None, operation_id: str | None, kind: str) -> None:
+    def __init__(
+        self,
+        path: str | None,
+        operation_id: str | None,
+        kind: str,
+        *,
+        total_steps: int = 7,
+        completion_phase: str = "complete",
+        completion_message: str = "Foggy initialization completed",
+        failure_message: str = "Foggy initialization failed",
+    ) -> None:
         self.path = Path(path).expanduser() if path else None
         self.operation_id = operation_id
         self.kind = kind
+        self.total_steps = total_steps
+        self.completion_phase = completion_phase
+        self.completion_message = completion_message
+        self.failure_message = failure_message
         self.started_at = now_utc()
         self.phase = "preflight"
         self.step_index = 0
         self.fraction = 0.0
+        self.percent_override: int | None = None
         self.message = ""
         self.current_file: str | None = None
         self.completed_files: int | None = None
         self.total_files: int | None = None
+        self.elapsed_seconds: int | None = None
+        self.timeout_seconds: int | None = None
 
     @property
     def enabled(self) -> bool:
@@ -72,7 +87,11 @@ class ProgressReporter:
             return
         bounded_step = max(0, min(self.step_index, self.total_steps))
         bounded_fraction = max(0.0, min(float(self.fraction), 1.0))
-        percent = 100 if state == "succeeded" else round(((bounded_step + bounded_fraction) / self.total_steps) * 100)
+        percent = 100 if state == "succeeded" else (
+            max(0, min(self.percent_override, 99))
+            if self.percent_override is not None
+            else round(((bounded_step + bounded_fraction) / self.total_steps) * 100)
+        )
         payload = {
             "schemaVersion": PROGRESS_SCHEMA,
             "operationId": self.operation_id,
@@ -88,6 +107,10 @@ class ProgressReporter:
         }
         if self.completed_files is not None and self.total_files is not None:
             payload["files"] = {"completed": self.completed_files, "total": self.total_files}
+        if self.elapsed_seconds is not None:
+            payload["timing"] = {"elapsedSeconds": self.elapsed_seconds}
+            if self.timeout_seconds is not None:
+                payload["timing"]["timeoutSeconds"] = self.timeout_seconds
         if finished_at:
             payload["finishedAt"] = finished_at
         if error:
@@ -105,28 +128,37 @@ class ProgressReporter:
         current_file: str | None = None,
         completed_files: int | None = None,
         total_files: int | None = None,
+        percent: int | None = None,
+        elapsed_seconds: int | None = None,
+        timeout_seconds: int | None = None,
     ) -> None:
         self.phase = phase
         self.step_index = step_index
         self.fraction = fraction
+        self.percent_override = percent
         self.message = message
         self.current_file = current_file
         self.completed_files = completed_files
         self.total_files = total_files
+        self.elapsed_seconds = elapsed_seconds
+        self.timeout_seconds = timeout_seconds
         self._write("running")
 
     def finish(self) -> None:
-        self.phase = "complete"
+        self.phase = self.completion_phase
         self.step_index = self.total_steps
         self.fraction = 0.0
-        self.message = "Foggy initialization completed"
+        self.percent_override = 100
+        self.message = self.completion_message
         self.current_file = None
         self.completed_files = None
         self.total_files = None
+        self.elapsed_seconds = None
+        self.timeout_seconds = None
         self._write("succeeded", finished_at=now_utc())
 
     def fail(self, error: object) -> None:
-        self.message = "Foggy initialization failed"
+        self.message = self.failure_message
         self._write("failed", finished_at=now_utc(), error=str(error))
 
 
@@ -243,6 +275,79 @@ def command_result(command: list[str], timeout: int = 30, check: bool = False) -
     if check and (not payload["available"] or payload["exitCode"] != 0):
         raise OnboardingError(f"Command failed: {command[0]}: {payload['stderr'] or payload['stdout']}")
     return payload
+
+
+def command_result_with_progress(
+    command: list[str],
+    timeout: int,
+    progress: ProgressReporter,
+    *,
+    phase: str,
+    step_index: int,
+    message: str,
+    readiness_timeout: int,
+    start_percent: int,
+    end_percent: int,
+    poll_interval: float = 1.0,
+) -> dict:
+    started = time.monotonic()
+    try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except FileNotFoundError:
+        return {
+            "command": command[0],
+            "available": False,
+            "exitCode": None,
+            "stdout": "",
+            "stderr": "command not found",
+            "durationMs": round((time.monotonic() - started) * 1000),
+        }
+
+    stdout = ""
+    stderr = ""
+    while True:
+        try:
+            stdout, stderr = process.communicate(timeout=poll_interval)
+            break
+        except subprocess.TimeoutExpired:
+            elapsed = time.monotonic() - started
+            readiness_fraction = min(elapsed / max(readiness_timeout, 1), 1.0)
+            percent = round(start_percent + (end_percent - start_percent) * readiness_fraction)
+            progress.update(
+                phase,
+                step_index,
+                message,
+                percent=percent,
+                elapsed_seconds=max(1, round(elapsed)),
+                timeout_seconds=readiness_timeout,
+            )
+            if elapsed >= timeout:
+                process.kill()
+                stdout, stderr = process.communicate()
+                return {
+                    "command": command[0],
+                    "available": True,
+                    "exitCode": None,
+                    "stdout": stdout.strip(),
+                    "stderr": f"timed out after {timeout} seconds",
+                    "durationMs": round((time.monotonic() - started) * 1000),
+                }
+
+    return {
+        "command": command[0],
+        "available": True,
+        "exitCode": process.returncode,
+        "stdout": stdout.strip(),
+        "stderr": stderr.strip(),
+        "durationMs": round((time.monotonic() - started) * 1000),
+    }
 
 
 def sha256(path: Path) -> str:
@@ -1276,8 +1381,57 @@ def parse_json_output(result: dict, label: str) -> dict:
         raise OnboardingError(f"{label} did not return JSON") from exc
 
 
+def write_runtime_start_failure(
+    data_root: Path,
+    evidence_dir: Path,
+    launch: dict,
+    phase: str,
+    error: object,
+    elapsed_ms: int,
+) -> dict:
+    logs = []
+    for name in ("stdoutLog", "stderrLog"):
+        value = launch.get(name)
+        path = normalized(value) if isinstance(value, str) and value else None
+        item = {"name": name, "path": str(path) if path else None, "exists": bool(path and path.is_file())}
+        if path and path.is_file():
+            stat = path.stat()
+            item.update({"sizeBytes": stat.st_size, "modifiedAt": dt.datetime.fromtimestamp(stat.st_mtime, dt.timezone.utc).isoformat()})
+        logs.append(item)
+    pid = int(launch.get("pid", 0))
+    failure = {
+        "schemaVersion": "foggy-deepseek-runtime-start-failure/v1",
+        "failedAt": now_utc(),
+        "phase": phase,
+        "message": str(error),
+        "elapsedMs": elapsed_ms,
+        "pid": pid or None,
+        "processRunningBeforeCleanup": process_info(pid)["running"] if pid else False,
+        "runtimeUrl": launch.get("runtimeUrl"),
+        "workDir": launch.get("workDir"),
+        "evidenceDir": str(evidence_dir),
+        "logs": logs,
+    }
+    atomic_json(evidence_dir / "failure.json", failure)
+    atomic_json(data_root / "last-runtime-start-failure.json", failure)
+    return failure
+
+
 def runtime_start_command(args: argparse.Namespace) -> dict:
+    global ACTIVE_PROGRESS
     versions = load_versions()
+    readiness_timeout = args.timeout or int(versions["defaults"]["readinessTimeoutSeconds"])
+    progress = ProgressReporter(
+        getattr(args, "progress_file", None),
+        getattr(args, "operation_id", None),
+        getattr(args, "operation_kind", "runtime-start"),
+        total_steps=6,
+        completion_phase="runtime-complete",
+        completion_message="Foggy Runtime is ready",
+        failure_message="Foggy Runtime startup failed",
+    )
+    ACTIVE_PROGRESS = progress
+    progress.update("runtime-preflight", 0, "Checking Runtime state and prerequisites", percent=3)
     install_root = normalized(args.install_root or default_install_root())
     state = read_install_state(install_root)
     data_root = normalized(args.data_root or state["dataRoot"])
@@ -1296,15 +1450,24 @@ def runtime_start_command(args: argparse.Namespace) -> dict:
             base_url = prior.get("runtimeUrl")
             if not isinstance(base_url, str) or not base_url:
                 raise OnboardingError("Recorded Runtime does not contain runtimeUrl")
-            wait_result = command_result(
+            progress.update("runtime-readiness", 3, "Revalidating the recorded Runtime", percent=30, elapsed_seconds=0, timeout_seconds=readiness_timeout)
+            wait_result = command_result_with_progress(
                 [cli, "--base-url", base_url, "--namespace", namespace, "--output", "json", "wait-ready",
-                 "--timeout-seconds", str(args.timeout or versions["defaults"]["readinessTimeoutSeconds"]),
+                 "--timeout-seconds", str(readiness_timeout),
                  "--interval-seconds", "1"],
-                timeout=(args.timeout or versions["defaults"]["readinessTimeoutSeconds"]) + 30,
+                readiness_timeout + 30,
+                progress,
+                phase="runtime-readiness",
+                step_index=3,
+                message="Revalidating the recorded Runtime",
+                readiness_timeout=readiness_timeout,
+                start_percent=30,
+                end_percent=85,
             )
             wait_payload = parse_json_output(wait_result, "wait-ready")
             if wait_payload.get("success") is not True:
                 raise OnboardingError("wait-ready returned success=false for recorded Runtime")
+            progress.update("runtime-capabilities", 4, "Verifying Runtime API capabilities", percent=90)
             capabilities = parse_json_output(
                 command_result(
                     [cli, "--base-url", base_url, "--namespace", namespace, "--output", "json", "capabilities"],
@@ -1324,6 +1487,8 @@ def runtime_start_command(args: argparse.Namespace) -> dict:
                 "schemaVersion": capabilities.get("data", {}).get("schemaVersion"),
                 "securityMode": capabilities.get("data", {}).get("securityMode"),
             }
+            progress.finish()
+            ACTIVE_PROGRESS = None
             return {
                 "success": True,
                 **prior,
@@ -1340,6 +1505,7 @@ def runtime_start_command(args: argparse.Namespace) -> dict:
                 "productionReady": False,
             }
         existing.unlink()
+    progress.update("runtime-preflight", 1, "Checking port and Runtime workspace", percent=10)
     port = args.port or int(versions["defaults"]["port"])
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         try:
@@ -1350,6 +1516,7 @@ def runtime_start_command(args: argparse.Namespace) -> dict:
     work_dir.mkdir(parents=True, exist_ok=True)
     launcher_dir = normalized(state["launcher"]["path"])
     java_exe = args.java or os.environ.get("JAVA_EXE", "java")
+    progress.update("runtime-launcher", 2, "Starting the Java Runtime through Launcher", percent=20)
     if os.name == "nt":
         shell = shutil.which("pwsh") or shutil.which("powershell")
         if not shell:
@@ -1397,12 +1564,25 @@ def runtime_start_command(args: argparse.Namespace) -> dict:
     evidence_dir = data_root / "evidence" / f"runtime-start-{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}"
     evidence_dir.mkdir(parents=True, exist_ok=True)
     atomic_json(evidence_dir / "launch.json", launch)
+    startup_started = time.monotonic()
     try:
-        wait_result = command_result([cli, "--base-url", base_url, "--namespace", namespace, "--output", "json", "wait-ready", "--timeout-seconds", str(args.timeout or versions["defaults"]["readinessTimeoutSeconds"]), "--interval-seconds", "1"], timeout=(args.timeout or versions["defaults"]["readinessTimeoutSeconds"]) + 30)
+        progress.update("runtime-readiness", 3, "Waiting for Java Runtime readiness", percent=30, elapsed_seconds=0, timeout_seconds=readiness_timeout)
+        wait_result = command_result_with_progress(
+            [cli, "--base-url", base_url, "--namespace", namespace, "--output", "json", "wait-ready", "--timeout-seconds", str(readiness_timeout), "--interval-seconds", "1"],
+            readiness_timeout + 30,
+            progress,
+            phase="runtime-readiness",
+            step_index=3,
+            message="Waiting for Java Runtime readiness",
+            readiness_timeout=readiness_timeout,
+            start_percent=30,
+            end_percent=85,
+        )
         wait_payload = parse_json_output(wait_result, "wait-ready")
         if wait_payload.get("success") is not True:
             raise OnboardingError("wait-ready returned success=false")
         atomic_json(evidence_dir / "wait-ready.json", wait_payload)
+        progress.update("runtime-capabilities", 4, "Verifying Runtime API capabilities", percent=90)
         capabilities_result = command_result([cli, "--base-url", base_url, "--namespace", namespace, "--output", "json", "capabilities"], timeout=30)
         capabilities = parse_json_output(capabilities_result, "capabilities")
         expected_contract = versions["components"]["launcher"]["runtimeApiContract"]
@@ -1411,12 +1591,21 @@ def runtime_start_command(args: argparse.Namespace) -> dict:
         if capabilities.get("data", {}).get("securityMode") != versions["defaults"]["securityMode"]:
             raise OnboardingError("Packaged Launcher did not report the expected dev/test security mode")
         atomic_json(evidence_dir / "capabilities.json", capabilities)
-    except Exception:
+    except Exception as exc:
+        failure = write_runtime_start_failure(
+            data_root,
+            evidence_dir,
+            launch,
+            progress.phase,
+            exc,
+            round((time.monotonic() - startup_started) * 1000),
+        )
         try:
             os.kill(pid, signal.SIGTERM)
         except OSError:
             pass
-        raise
+        raise OnboardingError(f"{exc}; startup diagnostics: {failure['evidenceDir']}") from exc
+    progress.update("runtime-state", 5, "Saving verified Runtime state", percent=96, current_file="runtime-state.json")
     runtime_state = {
         "schemaVersion": RUNTIME_STATE_SCHEMA,
         "startedAt": now_utc(),
@@ -1435,6 +1624,9 @@ def runtime_start_command(args: argparse.Namespace) -> dict:
         },
     }
     atomic_json(data_root / "runtime-state.json", runtime_state)
+    (data_root / "last-runtime-start-failure.json").unlink(missing_ok=True)
+    progress.finish()
+    ACTIVE_PROGRESS = None
     return {"success": True, **runtime_state, "productionReady": False}
 
 
@@ -2855,6 +3047,9 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--namespace")
     start.add_argument("--timeout", type=int)
     start.add_argument("--java")
+    start.add_argument("--progress-file")
+    start.add_argument("--operation-id")
+    start.add_argument("--operation-kind", default="runtime-start")
     start.set_defaults(handler=runtime_start_command)
 
     stop = sub.add_parser("runtime-stop")

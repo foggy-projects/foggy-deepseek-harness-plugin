@@ -50,6 +50,56 @@ class OnboardingUnitTests(unittest.TestCase):
             self.assertEqual(json.loads(target.read_text(encoding="utf-8")), {"old": True})
             self.assertEqual([path.name for path in Path(temporary).iterdir()], ["operation-progress.json"])
 
+    def test_runtime_progress_records_elapsed_timeout_and_exact_percent(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "operation-progress.json"
+            progress = onboarding.ProgressReporter(
+                str(target),
+                "runtime-test",
+                "runtime-start",
+                total_steps=6,
+                completion_phase="runtime-complete",
+                completion_message="Foggy Runtime is ready",
+                failure_message="Foggy Runtime startup failed",
+            )
+            progress.update(
+                "runtime-readiness",
+                3,
+                "Waiting for Java Runtime readiness",
+                percent=47,
+                elapsed_seconds=56,
+                timeout_seconds=180,
+            )
+            payload = json.loads(target.read_text(encoding="utf-8"))
+            self.assertEqual(payload["percent"], 47)
+            self.assertEqual(payload["timing"], {"elapsedSeconds": 56, "timeoutSeconds": 180})
+            progress.finish()
+            payload = json.loads(target.read_text(encoding="utf-8"))
+            self.assertEqual(payload["phase"], "runtime-complete")
+            self.assertEqual(payload["message"], "Foggy Runtime is ready")
+            self.assertEqual(payload["percent"], 100)
+
+    def test_command_progress_updates_while_waiting(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "operation-progress.json"
+            progress = onboarding.ProgressReporter(str(target), "runtime-test", "runtime-start", total_steps=6)
+            result = onboarding.command_result_with_progress(
+                [onboarding.sys.executable, "-c", "import time; time.sleep(0.08); print('{}')"],
+                2,
+                progress,
+                phase="runtime-readiness",
+                step_index=3,
+                message="Waiting",
+                readiness_timeout=1,
+                start_percent=30,
+                end_percent=85,
+                poll_interval=0.01,
+            )
+            self.assertEqual(result["exitCode"], 0)
+            payload = json.loads(target.read_text(encoding="utf-8"))
+            self.assertEqual(payload["phase"], "runtime-readiness")
+            self.assertGreaterEqual(payload["timing"]["elapsedSeconds"], 1)
+
     def test_persistent_profile_store_is_private_and_overrideable(self):
         with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, {}, clear=False):
             os.environ.pop("FOGGY_RUNTIME_PROFILE_STORE", None)

@@ -14,7 +14,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.0-beta.10')
+  assert.equal(pkg.version, '0.4.0-beta.11')
   assert.equal(pkg.engines.node, '^22.19.0 || >=24.0.0')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
@@ -34,13 +34,13 @@ test('bundle patch mounts the dual-face Foggy package', async () => {
 test('documents the pnpm workspace-root install required by DSH 0.1.2 rc.1', async () => {
   const readme = await readFile(join(root, 'README.md'), 'utf8')
   assert.match(readme, /dsh plugin --profile web add --workspace-root/)
-  assert.match(readme, /0\.4\.0-beta\.10\.tgz/)
+  assert.match(readme, /0\.4\.0-beta\.11\.tgz/)
   assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@beta/)
 })
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.0-beta.10')
+  assert.equal(versions.packageVersion, '0.4.0-beta.11')
   assert.equal(versions.components.deepseekHarness.version, '0.1.2-rc.1')
   assert.equal(versions.components.python.version, '3.12.13')
   assert.equal(versions.components.cli.version, '0.1.23')
@@ -227,7 +227,7 @@ test('accepts only the DeepSeek Harness Node engine lines', () => {
   assert.equal(compatibleNode('26.0.0'), true)
 })
 
-test('exposes persistent initialization progress to the gateway and web client', async () => {
+test('exposes persistent initialization and Runtime startup progress to the web client', async () => {
   const gateway = await readFile(join(root, 'lib', 'index.js'), 'utf8')
   const client = await readFile(join(root, 'lib', 'client.js'), 'utf8')
   const onboarding = await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'scripts', 'onboarding.py'), 'utf8')
@@ -236,8 +236,14 @@ test('exposes persistent initialization progress to the gateway and web client',
   assert.match(gateway, /progress\?\.operationId === operation\.id/)
   assert.match(client, /role: 'progressbar'/)
   assert.match(client, /foggy-progress-fill/)
+  assert.match(client, /progressRuntimeReadiness/)
+  assert.match(client, /progress\.timing\?\.elapsedSeconds/)
   assert.match(onboarding, /PROGRESS_SCHEMA = "foggy-deepseek-onboarding-progress\/v1"/)
   assert.match(onboarding, /--progress-file/)
+  assert.match(onboarding, /command_result_with_progress/)
+  assert.match(onboarding, /last-runtime-start-failure\.json/)
+  assert.match(gateway, /args\[0\] === 'install' \|\| args\[0\] === 'runtime-start'/)
+  assert.match(gateway, /'runtime-start', '--install-root', roots\.installRoot, '--data-root', roots\.dataRoot/)
 })
 
 test('registers Skills natively and keeps managed analysis assets global', async () => {
