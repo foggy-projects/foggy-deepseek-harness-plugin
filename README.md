@@ -14,7 +14,7 @@ modify `PATH`, or register Python globally. Advanced users may explicitly set
 ## Local beta installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.14.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.15.tgz
 ```
 
 Restart `dsh web`, use the browser it opens (or the complete printed URL,
@@ -30,9 +30,13 @@ dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-p
 For development, `FOGGY_ASSET_CACHE_DIRS` can contain platform-delimited verified
 asset-cache directories. It is not required for a normal install.
 
-Database credentials remain outside the ordinary DSH settings document. The
-bundled onboarding Skill drives datasource discovery, semantic drafting,
-checkpointed publication, and bounded read-only query verification.
+The bundled onboarding Skill is intentionally development-first. Users may
+provide a local datasource password in the conversation, a user-managed
+connection file, an Agent environment variable, or a compatible Runtime
+Console. Direct passwords are submitted to the already-running Runtime without
+being copied into onboarding state or evidence. The Skill then drives schema
+discovery, semantic drafting, local Bundle registration, and bounded query
+verification without restarting Runtime.
 
 ## Native Skill and workspace contract
 
@@ -42,14 +46,12 @@ are available in every DSH workspace without copying or symlinking `.agents`.
 The current session `cwd` remains the workspace boundary for semantic drafts and
 evidence.
 
-Opaque CLI profiles default to the private persistent
-`<dataRoot>/cli-profiles` directory. Composite onboarding commands are
+Opaque CLI profiles remain available for users who prefer them and default to
+the private persistent `<dataRoot>/cli-profiles` directory, but they are not a
+prerequisite for ordinary development. Composite onboarding commands are
 idempotent: unchanged completed phases are resumed rather than re-adding a
-datasource or re-registering a published bundle. Settings detects legacy
-temporary profiles and offers an explicit, validated migration into the
-persistent store. A completed profile can also be bound non-destructively to an
-additional DSH workspace when its reviewed connection contract and published
-semantic digest are unchanged.
+datasource or re-registering a local Bundle. Settings detects legacy temporary
+profiles and offers an explicit, validated migration into the persistent store.
 
 Private Python, CLI, Launcher, the analysis Skill, install state, and Runtime
 state live in the user-level Foggy component directories. The managed CLI is intentionally isolated
@@ -73,9 +75,11 @@ same wildcard binding used by the Java server, so a conflicting application or W
 port proxy produces an immediate, high-visibility error instead of a readiness timeout.
 The CLI and Skills resolve the resulting stable Runtime URL from managed state.
 
-This beta remains a local dev/test integration. The bundled Runtime reports
-`securityMode=none-dev-test-only` and must not be exposed to a network or used as
-a production service.
+This beta remains a local dev/test integration. It does not automatically extend
+local credentials or approvals into a formal environment. Production model
+publication should use a separate manual or dedicated deployment workflow with
+an explicit target, model Git commit/tag, credentials, verification, and
+rollback plan.
 
 See [`docs/PUBLIC-BETA-READINESS.md`](./docs/PUBLIC-BETA-READINESS.md) for the
 tested public Beta scope, release gates, and stable-release blockers.

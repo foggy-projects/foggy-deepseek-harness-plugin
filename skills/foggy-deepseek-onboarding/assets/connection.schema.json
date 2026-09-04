@@ -12,6 +12,7 @@
     "type": {"enum": ["sqlite", "mysql", "postgres", "postgresql"]},
     "jdbcUrl": {"type": "string", "minLength": 1},
     "username": {"type": "string"},
+    "password": {"type": "string", "description": "Optional local development password. It is submitted once and is not copied into onboarding state or evidence."},
     "passwordEnv": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"},
     "opaqueProfileId": {"type": "string", "pattern": "^fop_[a-f0-9]{32}$"},
     "opaqueRevision": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
@@ -27,6 +28,7 @@
       "not": {"anyOf": [
         {"required": ["jdbcUrl"]},
         {"required": ["username"]},
+        {"required": ["password"]},
         {"required": ["passwordEnv"]}
       ]}
     },
@@ -38,13 +40,9 @@
       ]}
     }
   ],
-  "allOf": [
-    {
-      "if": {
-        "required": ["jdbcUrl"],
-        "properties": {"type": {"not": {"const": "sqlite"}}}
-      },
-      "then": {"required": ["passwordEnv"]}
+  "allOf": [{
+    "not": {
+      "required": ["password", "passwordEnv"]
     }
-  ]
+  }]
 }

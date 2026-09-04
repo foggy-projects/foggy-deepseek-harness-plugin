@@ -1,10 +1,10 @@
-# Public beta readiness: 0.4.0-beta.14
+# Public beta readiness: 0.4.0-beta.15
 
 Assessment date: 2026-09-04
 
 ## Verdict
 
-`0.4.0-beta.14` is suitable for a scoped public beta on Windows 10/11 x64 and
+`0.4.0-beta.15` is suitable for a scoped public beta on Windows 10/11 x64 and
 Linux/WSL2 x64. It is not a general-availability release.
 
 The plugin package stays small and downloads large components only during
@@ -26,8 +26,22 @@ system PATH, registry, or a user's existing Python installation.
 - WSL2 reported the existing managed Python, CLI, Launcher, and analysis Skill
   as ready; an isolated Windows profile correctly reported its fresh component
   state and rejected the host's Java 12 as below the Java 17 prerequisite.
+- Onboarding is development-first: a direct password or Agent environment
+  variable is submitted to the public datasource API of an already-running
+  Runtime. The password is excluded from onboarding state and evidence, and
+  datasource setup does not trigger Runtime restart. Opaque profiles remain an
+  optional advanced path.
+- A real Launcher 0.1.18 smoke on Java 17 accepted a synthetic inline-password
+  datasource through the public Runtime API while retaining the same Java PID.
+  The isolated registry confirmed the documented local-development plaintext
+  persistence boundary; the test datasource was then removed and the temporary
+  Runtime stopped.
+- A full isolated `onboard-datasource-run` then created, tested, bound, and
+  inspected a SQLite datasource containing one table. Runtime retained the same
+  PID, while the persisted onboarding state and command evidence contained no
+  copy of the synthetic password.
 - The UI reported Python 3.12.13 as `Foggy private`, and CLI 0.1.23, Launcher
-  0.1.18, analysis Skill 0.1.17, and onboarding Skill 0.4.0-beta.14 as installed.
+  0.1.18, analysis Skill 0.1.17, and onboarding Skill 0.4.0-beta.15 as installed.
 - Runtime startup now reports the current phase, elapsed/timeout seconds, and a
   bounded progress value. A real Windows launch with Temurin 17 reached readiness
   and passed capabilities in 18.9 seconds. A controlled post-launch Java exit was
@@ -47,8 +61,10 @@ system PATH, registry, or a user's existing Python installation.
   downloaded artifacts are not trusted until the complete SHA256 matches.
 - Windows progress writes tolerate transient sharing violations without losing
   the previous valid progress document or leaving temporary files behind.
-- Automated regression passed on Windows and Linux/WSL2: 20 Node tests and 17
-  Python tests on each platform, plus shell and PowerShell syntax checks.
+- Current automated regression passes 20 Node tests and 20 Python tests. The
+  new datasource tests cover secret-free persisted state, direct Runtime API
+  submission, CLI bypass for inline development credentials, and output
+  redaction.
 
 ## Beta boundaries
 
@@ -63,6 +79,10 @@ system PATH, registry, or a user's existing Python installation.
 - Runtime production authentication is outside this beta's default local
   onboarding mode. The UI and doctor continue to report `productionReady=false`
   for the development-only no-auth mode.
+- Direct development passwords are stored by the current Runtime in its private
+  local datasource registry. Production publication is a separate manual or
+  future dedicated deployment workflow and should use the target environment's
+  credential controls.
 
 ## Release gate after publication
 

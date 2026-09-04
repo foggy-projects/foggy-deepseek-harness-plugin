@@ -22,7 +22,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.0-beta.14')
+  assert.equal(pkg.version, '0.4.0-beta.15')
   assert.equal(pkg.engines.node, '^22.19.0 || >=24.0.0')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
@@ -42,13 +42,13 @@ test('bundle patch mounts the dual-face Foggy package', async () => {
 test('documents the pnpm workspace-root install required by DSH 0.1.2 rc.1', async () => {
   const readme = await readFile(join(root, 'README.md'), 'utf8')
   assert.match(readme, /dsh plugin --profile web add --workspace-root/)
-  assert.match(readme, /0\.4\.0-beta\.14\.tgz/)
+  assert.match(readme, /0\.4\.0-beta\.15\.tgz/)
   assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@beta/)
 })
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.0-beta.14')
+  assert.equal(versions.packageVersion, '0.4.0-beta.15')
   assert.equal(versions.components.deepseekHarness.version, '0.1.2-rc.1')
   assert.equal(versions.components.python.version, '3.12.13')
   assert.equal(versions.components.cli.version, '0.1.23')
@@ -352,9 +352,11 @@ test('registers Skills natively and keeps managed analysis assets global', async
   assert.match(onboarding, /install_root \/ "skills"/)
   assert.doesNotMatch(onboarding, /install_onboarding_skill/)
   assert.match(skill, /native Skill registry/)
-  assert.match(skill, /absence of `foggy-runtime` from\s+`PATH` is not evidence/)
-  assert.match(skill, /current DSH session workspace as the authoritative `projectRoot`/)
-  assert.match(skill, /do not remove a successfully\s+published bundle/)
+  assert.match(skill, /absence from `PATH` does not mean it is missing/)
+  assert.match(skill, /current DSH workspace as `projectRoot`/)
+  assert.match(skill, /They do not require a Runtime restart/)
+  assert.match(skill, /Direct `password` is supported for local development/)
+  assert.match(skill, /production publication into a continuation of local onboarding/)
 })
 
 test('exposes public-beta recovery, diagnostics, and onboarding progress controls', async () => {

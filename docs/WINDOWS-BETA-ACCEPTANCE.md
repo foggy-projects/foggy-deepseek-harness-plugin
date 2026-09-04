@@ -1,7 +1,7 @@
 # Native Windows Beta acceptance
 
 This runbook validates DeepSeek Harness `0.1.2-rc.1` with Foggy plugin
-`0.4.0-beta.14` on a clean 64-bit Windows 10 or Windows 11 machine. Use a local
+`0.4.0-beta.15` on a clean 64-bit Windows 10 or Windows 11 machine. Use a local
 directory that is not synchronized by OneDrive.
 
 ## Prerequisites
@@ -54,7 +54,7 @@ Expected component state:
 - CLI 0.1.23;
 - Launcher 0.1.18;
 - analysis Skill 0.1.17;
-- onboarding Skill 0.4.0-beta.14;
+- onboarding Skill 0.4.0-beta.15;
 - Java 17+ available;
 - native DSH Skill registration available.
 
@@ -74,21 +74,24 @@ starting again must clear the applicable conflict state.
 
 ## Database and semantic-layer acceptance
 
-Keep database credentials out of this public repository. Create a private CLI
-profile outside the DSH conversation, pass only its opaque profile ID and
-revision to the onboarding workflow, and use a test-only database account with
-read-only permissions.
+Use a development or test database. For this local acceptance run, connection
+details and a password may be supplied directly in the prompt or in a local
+connection JSON file. The onboarding wrapper must configure the datasource
+online without stopping or restarting an already-running Runtime. It must not
+copy the password into onboarding state, evidence, TM/QM files, or Git.
 
 Use a natural prompt such as:
 
 ```text
-请帮我用 Foggy 分析这个测试数据库。我已经按验收手册创建了私有连接
-profile。请先确认连接和表结构，再围绕订单数据创建一个简单的语义层，
-包含订单数量、状态和开单时间，最后执行一个不超过 20 行的只读查询。
-不要修改数据库，也不要在对话或验收文件中输出密码。
+请帮我用 Foggy 分析这个测试数据库：地址、数据库名、账号和密码分别是
+<连接信息>。直接创建开发数据源并绑定一个合适的 namespace，不要重启
+Runtime。读取表结构后，在当前工作目录创建订单语义模型，包含订单数量、
+状态和开单时间，调试到模型通过，并执行一个不超过 20 行的只读查询。
 ```
 
-Pass only when Runtime readiness and capabilities succeed, datasource metadata
-can be discovered, TM/QM models validate and publish, the bounded read-only
-query succeeds, diagnostics contain no credentials, and stopping Runtime frees
-the configured port (default `18166`).
+Pass only when Runtime readiness and capabilities succeed, datasource setup
+does not restart Runtime, metadata can be discovered, TM/QM models validate and
+become effective in the local Runtime, the bounded read-only query succeeds,
+diagnostics contain no credentials, and stopping Runtime frees the configured
+port (default `18166`). Recommend Git management for the completed model files;
+do not treat this acceptance run as production publication.

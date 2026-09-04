@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 import venv
 import zipfile
@@ -918,7 +919,7 @@ def validate_connection(payload: dict) -> dict:
     if payload.get("schemaVersion") != CONNECTION_SCHEMA:
         raise OnboardingError(f"connection schemaVersion must be {CONNECTION_SCHEMA}")
     allowed = {
-        "schemaVersion", "name", "type", "jdbcUrl", "username", "passwordEnv",
+        "schemaVersion", "name", "type", "jdbcUrl", "username", "password", "passwordEnv",
         "opaqueProfileId", "opaqueRevision",
         "profile", "namespace", "schemas", "modelsDir", "evidenceDir", "readOnlyRecommended",
     }
@@ -930,6 +931,7 @@ def validate_connection(payload: dict) -> dict:
     for name in required:
         if not isinstance(payload.get(name), str) or not payload[name].strip():
             raise OnboardingError(f"connection.{name} must be a non-empty string")
+    password = payload.get("password")
     password_env = payload.get("passwordEnv")
     jdbc_url = None
     if opaque:
@@ -937,15 +939,19 @@ def validate_connection(payload: dict) -> dict:
             raise OnboardingError("connection.opaqueProfileId must be an opaque Foggy profile ID")
         if not isinstance(payload.get("opaqueRevision"), str) or not OPAQUE_REVISION_PATTERN.fullmatch(payload["opaqueRevision"]):
             raise OnboardingError("connection.opaqueRevision must be a sha256 revision")
-        exposed = sorted(name for name in ("jdbcUrl", "username", "passwordEnv") if name in payload)
+        exposed = sorted(name for name in ("jdbcUrl", "username", "password", "passwordEnv") if name in payload)
         if exposed:
             raise OnboardingError(f"Opaque connection plans must not contain: {', '.join(exposed)}")
     else:
+        if password is not None and not isinstance(password, str):
+            raise OnboardingError("connection.password must be a string")
         if password_env is not None and (not isinstance(password_env, str) or not ENV_NAME_PATTERN.fullmatch(password_env)):
             raise OnboardingError("connection.passwordEnv must be an environment variable name")
+        if password is not None and password_env is not None:
+            raise OnboardingError("Provide either connection.password or connection.passwordEnv, not both")
         jdbc_url = payload["jdbcUrl"].strip()
         if re.search(r"(?i)(?:password|passwd|pwd)\s*=", jdbc_url) or re.search(r"//[^/@:]+:[^/@]+@", jdbc_url):
-            raise OnboardingError("Do not embed passwords in jdbcUrl; use passwordEnv")
+            raise OnboardingError("Do not embed passwords in jdbcUrl; use password or passwordEnv")
     schemas = payload.get("schemas", [])
     if not isinstance(schemas, list) or any(not isinstance(item, str) or not item.strip() for item in schemas):
         raise OnboardingError("connection.schemas must be an array of non-empty strings")
@@ -973,6 +979,7 @@ def validate_connection(payload: dict) -> dict:
     else:
         result["jdbcUrl"] = jdbc_url
         result["username"] = payload.get("username")
+        result["password"] = password
         result["passwordEnv"] = password_env
     if payload.get("profile") is not None:
         result["profile"] = safe_profile(payload["profile"])
@@ -980,9 +987,19 @@ def validate_connection(payload: dict) -> dict:
         result["evidenceDir"] = payload["evidenceDir"].strip()
     if result["type"] not in {"sqlite", "mysql", "postgres", "postgresql"}:
         raise OnboardingError("Initial onboarding supports sqlite, mysql, postgres, and postgresql")
-    if not opaque and result["type"] != "sqlite" and not result["passwordEnv"]:
-        raise OnboardingError("Non-SQLite connections require passwordEnv")
     return result
+
+
+def persisted_connection(connection: dict) -> dict:
+    """Return the resumable connection contract without an inline development password."""
+    persisted = {key: value for key, value in connection.items() if key != "password"}
+    persisted["credentialMode"] = (
+        "inline-development" if connection.get("password") is not None
+        else "agent-environment" if connection.get("passwordEnv")
+        else "opaque-profile" if connection.get("connectionMode") == "opaque-profile"
+        else "none"
+    )
+    return persisted
 
 
 def validate_semantic_plan(payload: dict) -> dict:
@@ -1780,6 +1797,64 @@ def cli_json(install_state: dict, runtime_state: dict, namespace: str, command: 
     return payload
 
 
+def runtime_api_json(
+    runtime_state: dict,
+    namespace: str,
+    method: str,
+    path: str,
+    body: dict | None,
+    label: str,
+    timeout: int = 60,
+) -> dict:
+    """Call the public Runtime API for development inputs not yet exposed by the pinned CLI."""
+    base_url = str(runtime_state["runtimeUrl"]).rstrip("/")
+    request_body = json.dumps(body).encode("utf-8") if body is not None else None
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "X-NS": namespace,
+    }
+    auth_code = os.environ.get("FOGGY_RUNTIME_API_AUTH_CODE")
+    if auth_code:
+        headers["X-Foggy-Runtime-Code"] = auth_code
+    request = urllib.request.Request(
+        f"{base_url}{path}",
+        data=request_body,
+        headers=headers,
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        try:
+            failed = json.loads(raw)
+        except json.JSONDecodeError:
+            failed = None
+        error = failed.get("error") if isinstance(failed, dict) else None
+        detail = (
+            " | ".join(str(error.get(name)) for name in ("code", "phase", "message") if error.get(name))
+            if isinstance(error, dict)
+            else str(exc.reason)
+        )
+        raise OnboardingError(f"{label} failed with HTTP {exc.code}: {detail or exc.reason}") from exc
+    except urllib.error.URLError as exc:
+        raise OnboardingError(f"{label} could not reach Runtime: {exc.reason}") from exc
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise OnboardingError(f"{label} did not return JSON") from exc
+    if payload.get("success") is not True:
+        error = payload.get("error")
+        if isinstance(error, dict):
+            detail = " | ".join(str(error.get(name)) for name in ("code", "phase", "message") if error.get(name))
+        else:
+            detail = str(error or "unknown Runtime error")
+        raise OnboardingError(f"{label} returned success=false: {detail}")
+    return payload
+
+
 CONNECTION_SECRET_KEYS = {
     "jdbcurl", "url", "username", "password", "passwordenv", "passwordref",
 }
@@ -1837,7 +1912,8 @@ def onboarding_plan_command(args: argparse.Namespace) -> dict:
     if not project_root.is_dir():
         raise OnboardingError(f"Project root not found: {project_root}")
     connection_file = normalized(args.connection_file)
-    connection = validate_connection(read_json_object(connection_file, "Connection plan"))
+    requested_connection = validate_connection(read_json_object(connection_file, "Connection plan"))
+    connection = persisted_connection(requested_connection)
     if connection.get("connectionMode") == "opaque-profile":
         require_opaque_profile_cli(install_state)
     existing = read_onboarding_state(data_root, profile, required=False)
@@ -1882,7 +1958,10 @@ def onboarding_plan_command(args: argparse.Namespace) -> dict:
         "schemaVersion": "foggy-deepseek-onboarding-plan-result/v1",
         "profile": profile,
         "statePath": str(path),
-        "connection": {**connection, "passwordEnvPresent": bool(password_env and os.environ.get(password_env))},
+        "connection": {
+            **connection,
+            "passwordEnvPresent": bool(password_env and os.environ.get(password_env)),
+        },
         "runtimeAvailable": runtime_state is not None,
         "next": "run datasource-configure --apply after reviewing the plan",
         "productionReady": False,
@@ -1913,10 +1992,11 @@ def datasource_configure_command(args: argparse.Namespace) -> dict:
     if opaque:
         plan.update({"profileId": connection["opaqueProfileId"], "revision": connection["opaqueRevision"]})
     else:
+        inline_password = getattr(args, "runtime_password", None)
         plan.update({
             "jdbcUrl": connection["jdbcUrl"],
             "username": connection.get("username"),
-            "passwordEnv": connection.get("passwordEnv"),
+            "credentialMode": connection.get("credentialMode", "none"),
         })
     if not args.apply:
         return {"success": True, "dryRun": True, "profile": state["profile"], "plan": plan, "next": "rerun with --apply after approval"}
@@ -1928,22 +2008,50 @@ def datasource_configure_command(args: argparse.Namespace) -> dict:
         ]
         label = "opaque profile configure"
     else:
+        inline_password = getattr(args, "runtime_password", None)
         password_env = connection.get("passwordEnv")
-        if password_env and not os.environ.get(password_env):
+        if connection.get("credentialMode") == "inline-development" and inline_password is None:
+            raise OnboardingError(
+                "Direct development password is not persisted; rerun onboard-datasource-run with the original connection file"
+            )
+        if inline_password is None and password_env and os.environ.get(password_env) is None:
             raise OnboardingError(f"Required password environment variable is not present: {password_env}")
-        command = ["datasources", "add", "--name", connection["name"], "--type", connection["type"], "--jdbc-url", connection["jdbcUrl"]]
-        if connection.get("username"):
-            command.extend(["--username", connection["username"]])
-        if password_env:
-            command.extend(["--password-env", password_env])
         label = "datasources add"
-    if args.replace:
-        command.append("--replace")
+        resolved_password = inline_password if inline_password is not None else (
+            os.environ.get(password_env) if password_env else None
+        )
+        command = None
     already_present = False
     try:
-        result = redact_connection_material(
-            cli_json(install_state, runtime_state, connection["namespace"], command, label)
-        )
+        if not opaque and resolved_password is not None:
+            body = {
+                "name": connection["name"],
+                "type": connection["type"],
+                "jdbcUrl": connection["jdbcUrl"],
+                "replace": bool(args.replace),
+                "enabled": True,
+                "password": resolved_password,
+            }
+            if connection.get("username"):
+                body["username"] = connection["username"]
+            result = redact_connection_material(runtime_api_json(
+                runtime_state,
+                connection["namespace"],
+                "POST",
+                "/api/v1/datasources",
+                body,
+                label,
+            ))
+        else:
+            if not opaque:
+                command = ["datasources", "add", "--name", connection["name"], "--type", connection["type"], "--jdbc-url", connection["jdbcUrl"]]
+                if connection.get("username"):
+                    command.extend(["--username", connection["username"]])
+            if args.replace:
+                command.append("--replace")
+            result = redact_connection_material(
+                cli_json(install_state, runtime_state, connection["namespace"], command, label)
+            )
     except OnboardingError as exc:
         if "DATASOURCE_ALREADY_EXISTS" not in str(exc):
             raise
@@ -2641,6 +2749,7 @@ def datasource_run_command(args: argparse.Namespace) -> dict:
     _install_root, install_state, data_root, _runtime_state = onboarding_context(args, require_runtime=True)
     project_root = normalized(args.project_root or Path.cwd())
     requested_connection = validate_connection(read_json_object(normalized(args.connection_file), "Connection plan"))
+    resumable_connection = persisted_connection(requested_connection)
     if not requested_connection.get("profile"):
         raise OnboardingError("Composite datasource onboarding requires connection.profile in the approved contract")
     profile = requested_connection["profile"]
@@ -2654,7 +2763,7 @@ def datasource_run_command(args: argparse.Namespace) -> dict:
     files: list[str] = []
     existing = read_onboarding_state(data_root, profile, required=False)
     if existing:
-        if existing.get("connection") != requested_connection:
+        if persisted_connection(existing.get("connection", {})) != resumable_connection:
             raise OnboardingError("Existing onboarding profile does not match the requested connection plan")
         adopted = bind_completed_workspace(existing, data_root, project_root)
         plan_result = {
@@ -2687,6 +2796,7 @@ def datasource_run_command(args: argparse.Namespace) -> dict:
     else:
         configure_dry = datasource_configure_command(argparse.Namespace(
             install_root=args.install_root, data_root=args.data_root, profile=profile, apply=False, replace=False,
+            runtime_password=requested_connection.get("password"),
         ))
         save_composite_result(evidence_dir, "02-datasource-dry.json", configure_dry, files)
         if not args.approve_configure:
@@ -2702,6 +2812,7 @@ def datasource_run_command(args: argparse.Namespace) -> dict:
             }
         configured = datasource_configure_command(argparse.Namespace(
             install_root=args.install_root, data_root=args.data_root, profile=profile, apply=True, replace=False,
+            runtime_password=requested_connection.get("password"),
         ))
         save_composite_result(evidence_dir, "03-datasource-apply.json", configured, files)
         state = read_onboarding_state(data_root, profile)

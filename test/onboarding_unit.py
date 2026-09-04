@@ -1,9 +1,11 @@
 import importlib.util
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 from pathlib import Path
 import tempfile
 import subprocess
 import time
+import threading
 import unittest
 from unittest.mock import patch
 import json
@@ -201,6 +203,109 @@ class OnboardingUnitTests(unittest.TestCase):
             "tms-mysql",
         )
         self.assertIsNone(onboarding.matching_datasource(payload, {"name": "tms-mysql", "type": "postgres"}))
+
+    def test_development_connection_accepts_inline_password_without_persisting_it(self):
+        connection = onboarding.validate_connection({
+            "schemaVersion": onboarding.CONNECTION_SCHEMA,
+            "profile": "demo",
+            "name": "demo-mysql",
+            "type": "mysql",
+            "jdbcUrl": "jdbc:mysql://127.0.0.1/demo",
+            "username": "demo",
+            "password": "development-secret",
+            "namespace": "demo",
+        })
+        self.assertEqual(connection["password"], "development-secret")
+        persisted = onboarding.persisted_connection(connection)
+        self.assertNotIn("password", persisted)
+        self.assertNotIn("development-secret", json.dumps(persisted))
+
+    def test_datasource_configure_submits_inline_password_without_cli_or_output_leak(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            data_root = Path(temporary)
+            state = {
+                "profile": "demo",
+                "connection": {
+                    "connectionMode": "legacy-inline",
+                    "name": "demo-mysql",
+                    "type": "mysql",
+                    "jdbcUrl": "jdbc:mysql://127.0.0.1/demo",
+                    "username": "demo",
+                    "passwordEnv": None,
+                    "namespace": "demo",
+                },
+                "steps": {},
+            }
+            runtime_state = {"runtimeUrl": "http://127.0.0.1:18166"}
+            args = type("Args", (), {
+                "profile": "demo",
+                "apply": True,
+                "replace": False,
+                "runtime_password": "development-secret",
+            })()
+            api_result = {
+                "success": True,
+                "data": {
+                    "datasource": {
+                        "name": "demo-mysql",
+                        "jdbcUrl": "jdbc:mysql://127.0.0.1/demo",
+                        "password": "development-secret",
+                    }
+                },
+            }
+            with (
+                patch.object(onboarding, "require_profile", return_value=(state, {"cli": {"command": "foggy-runtime"}}, data_root, runtime_state)),
+                patch.object(onboarding, "runtime_api_json", return_value=api_result) as runtime_api,
+                patch.object(onboarding, "cli_json") as cli,
+                patch.object(onboarding, "write_onboarding_state", return_value=data_root / "state.json"),
+            ):
+                result = onboarding.datasource_configure_command(args)
+            cli.assert_not_called()
+            request_body = runtime_api.call_args.args[4]
+            self.assertEqual(request_body["password"], "development-secret")
+            self.assertNotIn("development-secret", json.dumps(result))
+            self.assertNotIn("jdbc:mysql", json.dumps(result))
+
+    def test_runtime_api_json_posts_development_password_to_running_runtime(self):
+        captured = {}
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                captured["path"] = self.path
+                captured["namespace"] = self.headers.get("X-NS")
+                captured["body"] = json.loads(self.rfile.read(length))
+                response = json.dumps({"success": True, "data": {"accepted": True}}).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response)))
+                self.end_headers()
+                self.wfile.write(response)
+
+            def log_message(self, _format, *_args):
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            port = server.server_address[1]
+            result = onboarding.runtime_api_json(
+                {"runtimeUrl": f"http://127.0.0.1:{port}"},
+                "demo",
+                "POST",
+                "/api/v1/datasources",
+                {"name": "demo-mysql", "password": "development-secret"},
+                "datasources add",
+            )
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=2)
+        self.assertTrue(result["success"])
+        self.assertEqual(captured["path"], "/api/v1/datasources")
+        self.assertEqual(captured["namespace"], "demo")
+        self.assertEqual(captured["body"]["password"], "development-secret")
 
     def test_semantic_checkpoint_matches_unchanged_registered_draft(self):
         with tempfile.TemporaryDirectory() as temporary:

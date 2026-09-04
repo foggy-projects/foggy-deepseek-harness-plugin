@@ -1,137 +1,116 @@
 ---
 name: foggy-deepseek-onboarding
-description: Install and operate a pinned Foggy CLI-first dev/test environment from DeepSeek Harness, including opaque datasource profiles, resumable verification, and schema discovery before semantic authoring. Use for initial Foggy setup or local Runtime onboarding; do not use for production deployment or MCP configuration.
+description: Set up and use Foggy Runtime for data-source exploration and semantic-model development inside DeepSeek Harness. Use for local experience, datasource onboarding, TM/QM authoring, validation, and development publication; route production deployment or updates to a separate release workflow.
 ---
 
 # Foggy DeepSeek onboarding
 
-Set up Foggy through shell and `foggy-runtime` CLI. Do not configure Foggy MCP for this local workflow.
+Use this Skill for the normal DeepSeek Harness experience: connect a development datasource, inspect
+it, create TM/QM files in the current workspace, and iterate until queries pass. Use the managed
+`foggy-runtime` CLI and this Skill's wrappers; do not configure Foggy MCP for this local workflow.
 
-## Native registry and installed-state gate
+## Product boundary
 
-This Skill is registered by the Foggy plugin through DeepSeek Harness's native Skill registry. Its
-resource base is the authoritative location for these scripts and references; do not search for or
-copy this Skill into the current workspace.
+- Treat the plugin and bundled Launcher as local experience and development tooling.
+- Datasources, namespace bindings, model Bundles, refreshes, and query checks are online Runtime
+  operations. They do not require a Runtime restart.
+- Start Runtime only when it is absent. Reuse a healthy running Runtime. Restart only when the user
+  asks, a Launcher/JAR upgrade requires it, Runtime is unhealthy, or an actual startup setting such as
+  port, JVM options, Runtime authentication, or an opt-in module changes.
+- Do not turn production publication into a continuation of local onboarding. When the user wants to
+  deploy or update a formal environment, recommend a manual release or a dedicated production
+  deployment workflow with separately supplied target access, credentials, version, verification, and
+  rollback information.
+- Do not modify Foggy engine or CLI source. If progress genuinely requires either change, stop and ask
+  for explicit authorization.
 
-- Resolve the global install state from the platform default component directory: on Linux use
-  `${XDG_DATA_HOME:-$HOME/.local/share}/foggy/deepseek-harness/install-state.json`; on Windows use
-  `%LOCALAPPDATA%\Foggy\DeepSeekHarness\install-state.json`.
-- Confirm the installation with this Skill's `doctor` wrapper and pass the current DSH session
-  workspace as `--project-root`. The absence of `foggy-runtime` from `PATH` is not evidence that the
-  managed CLI is missing; the plugin intentionally installs it in an isolated environment and records
-  its absolute command in the global install state.
-- The plugin downloads and verifies a pinned private Python runtime before running this Skill. Do not
-  search for, install, or repair a system Python. Wrappers resolve the interpreter recorded in the
-  global install state. If private Python is missing, use the plugin's Python repair action. Only use
-  `FOGGY_PYTHON` or `FOGGY_ONBOARDING_PYTHON` when the user explicitly supplied an advanced override.
-- Do not independently download or reinstall the CLI. If the global install state, managed marker, or
-  analysis Skill is missing or invalid, ask the user to open the Foggy plugin settings and use
-  the matching component repair action. Repair restores managed components and invalidates the
-  native DSH Skill catalog. Reinstall or upgrade the plugin itself to restore this bundled Skill.
-- Treat the current DSH session workspace as the authoritative `projectRoot` for the whole onboarding
-  run. Do not redirect semantic drafts or contracts to a different repository merely because another
-  Skill or example was found there. Place non-secret contracts below
-  `<projectRoot>/.foggy/onboarding-contracts/<profile>/`, drafts below
-  `<projectRoot>/.foggy/onboarding-drafts/<profile>/`, and published files below the approved
-  project-relative `modelsDir`.
+## Managed installation
 
-## Mandatory orchestration boundary
+This Skill is registered through DeepSeek Harness's native Skill registry. Its scripts and references
+are authoritative; do not copy the Skill into the current workspace.
 
-For every new-database onboarding session, this Skill is the orchestration authority until
-`onboard-status` reports `next.status=completed`:
+- Linux install state: `${XDG_DATA_HOME:-$HOME/.local/share}/foggy/deepseek-harness/install-state.json`.
+- Windows install state: `%LOCALAPPDATA%\Foggy\DeepSeekHarness\install-state.json`.
+- Run this Skill's `doctor` wrapper with the current DSH workspace as `--project-root`. The managed CLI
+  is intentionally isolated, so absence from `PATH` does not mean it is missing.
+- Use plugin settings to initialize or repair private Python, CLI, Launcher, or the managed analysis
+  Skill. Do not independently reinstall them during a normal analysis session.
+- Treat the current DSH workspace as `projectRoot`. Keep model drafts and final model files there rather
+  than redirecting them to an example repository.
 
-- Invoke datasource, schema, semantic, bundle, and query operations only through this Skill's
-  `scripts/onboard.ps1` or `scripts/onboard.sh`. Do not call `foggy-runtime` directly for those
-  operations, even if another loaded Skill documents equivalent CLI commands.
-- Use `foggy-ai-analysis` only to author TM/QM draft content. Its general direct-CLI workflow does not
-  supersede this Skill's state machine, approval gates, names, paths, query limit, or evidence rules.
-- Use the exact profile, datasource, namespace, bundle, model names, paths, fields, and query limit
-  supplied or confirmed by the user. Do not replace them with examples or inferred alternatives.
-- Do not use raw SQL to sample business rows during onboarding. `schema-discover` is the metadata gate;
-  any later SQL probe requires separate explicit approval and must be bounded and read-only.
-- Never use `--replace`, `--replace-bundle`, `--prune`, `--watch`, or `--execute` unless that exact
-  mutation was explicitly approved. Approval for adding a new resource is not approval to replace one.
-- Save each wrapper result as the single JSON object returned on stdout when the user requests evidence.
-  Do not claim completion when required evidence is missing or the persisted status is incomplete.
-- Never read query-execution evidence back into the conversation. Report only validation state,
-  execution state, row count, and evidence path; do not report row values or generated SQL containing
-  business literals.
-- Prefer one composite command per approval boundary. Do not inspect this Skill's Python implementation
-  or the CLI package source during a normal run; use the documented command contract and inspect code
-  only after a structured wrapper error requires troubleshooting.
+## Development workflow
 
-## Boundaries
+1. Run `doctor`. Start Runtime only if it is not already healthy; require `wait-ready` and
+   `capabilities` after a new start.
+2. Accept datasource connection details from the user's message, a user-supplied local JSON file, an
+   environment variable, or Runtime Console. Direct `password` is supported for local development.
+   The wrapper submits it to the public Runtime API without copying it into onboarding state or
+   evidence. Do not echo it in the response.
+3. Create or select the namespace, add/test the datasource online, and bind it to the namespace. Do
+   not stop or restart Runtime to make a password available. A running Runtime can accept a direct
+   development password through its datasource API.
+4. Inspect tables, columns, keys, and relationships. Small, bounded, read-only SQL samples are allowed
+   when they help infer captions, enums, units, or date semantics. Do not run mutations unless the user
+   explicitly requests them.
+5. Load `foggy-ai-analysis` from the native registry only for TM/QM authoring and query tuning; its
+   generic installation, datasource-secret, and production-deployment guidance does not override this
+   development workflow. Default to a project-local `models/` directory unless the user specifies
+   another directory.
+6. Iterate through model validation, Bundle registration/update, model refresh/describe, query
+   validation, and bounded query execution. Development publication means making the local model
+   directory effective in this local Runtime; it is not a production release.
+7. When the model works, recommend committing the model directory to the user's own Git repository.
+   Do not initialize a repository, commit, push, or create a remote unless the user requests it.
 
-- Treat the bundled Launcher as local dev/test only. Its expected security mode is
-  `none-dev-test-only`; never expose it to a network.
-- Do not print, persist, or request secrets in chat. Use named environment variables or a private env
-  file outside the Skill and evidence directories.
-- Do not modify Foggy engine or CLI source. If setup cannot continue without such a change, stop and
-  ask the user for explicit authorization.
-- Before downloads, installs, replacement, Runtime start/stop, or removal, state the concrete action
-  and obtain any authorization required by the host.
+Read [references/onboarding-workflow.md](references/onboarding-workflow.md) for the wrapper commands and
+credential shapes. Use `foggy-ai-analysis` references for detailed TM/QM modeling and query tuning.
 
-## Workflow
+## Credential choices for local development
 
-1. Run `scripts/doctor.ps1 --project-root <current-session-workspace>` on Windows or
-   `bash scripts/doctor.sh --project-root <current-session-workspace>` on Linux.
-2. If private Python, the pinned CLI, Launcher, or global managed analysis Skill is missing, use the
-   Foggy plugin's matching Repair action. First-time Python bootstrap requires the plugin UI unless
-   the user explicitly supplies `FOGGY_ONBOARDING_PYTHON`. Use a matching install script only after
-   private Python exists and the plugin UI is unavailable; use `--dry-run` first when paths or
-   permissions are uncertain.
-3. Run `runtime-start` and require successful `wait-ready` plus `capabilities`. Record engine,
-   Runtime API version, schema version, security mode, URL, namespace, PID, and evidence path. If the
-   recorded Runtime is already running, `runtime-start` verifies and reuses it instead of starting a
-   second process.
-4. Load `foggy-ai-analysis` from the native DSH Skill registry. Do not require a workspace copy.
-5. For a new business database, read [references/onboarding-workflow.md](references/onboarding-workflow.md)
-   and prefer its two composite `onboard-datasource-run` / `onboard-semantic-run` commands. Require the
-   trusted operator to create the private CLI profile outside Harness. Unless the operator explicitly
-   overrides it, use the persistent profile store reported by the wrapper under the Foggy data root
-   (`<dataRoot>/cli-profiles`), never `/tmp`. Accept only the opaque profile
-   ID, exact revision, datasource name/type, and namespace; never request JDBC URL, username,
-   password, or password environment-variable name in Harness.
-   If plugin settings report a legacy temporary profile, use the explicit migration action before
-   onboarding. It moves only validated connection metadata and environment-variable references; it
-   never copies a password value and leaves a recoverable private backup below the Foggy data root.
-6. After schema discovery, use `foggy-ai-analysis` only to author TM/QM files in the standard project-local
-   draft directory. Register, validate, publish, and verify them through this Skill's wrapper using the deterministic commands in
-   [references/onboarding-workflow.md](references/onboarding-workflow.md). Do not publish, prune, replace
-   a bundle, or execute a business-data query without the matching explicit flag and user approval.
-7. Stop only the Runtime PID recorded by this package. Preserve Runtime data unless the user explicitly
-   requests purge.
+Choose the simplest source the user provides:
 
-## Command contract
+- `password` in a connection file: simplest for an experience session; the source file remains under
+  the user's control and should normally stay outside Git.
+- `passwordEnv`: the wrapper reads the variable from the Agent process and submits the value online;
+  Runtime does not need to inherit it at startup.
+- Opaque profile: optional for users who already have one; never require it for ordinary onboarding.
+- Runtime Console: when a Launcher exposing Runtime Console is installed, the user may enter the
+  connection there using the management token shown by the host/plugin.
 
-All package scripts return one JSON object on stdout. Treat `success=false` or a nonzero exit code as a
-failure. Do not infer readiness from a fixed sleep; require CLI `wait-ready` and `capabilities`.
+Keep only a minimal development safety baseline: do not echo passwords, put them in TM/QM files,
+include them in evidence/diagnostics, or commit them to Git. Do not impose production IAM, audit,
+approval, secret-store, or network-governance requirements on this local flow.
 
-Use this analysis order after setup:
+## Command behavior
+
+All scripts emit one JSON object. Treat `success=false` or a nonzero exit code as failure. Prefer the
+two resumable composite commands for a complete requested experience:
 
 ```text
-datasource test -> bind -> diagnostics
-tables list -> inspect -> optional bounded read-only SQL
-models validate -> bundles add/update -> models refresh -> models describe
-query validate -> query execute -> interpretation
+onboard-datasource-run --project-root <workspace> --connection-file <json> \
+  --approve-configure --approve-bind --include-indexes
+
+onboard-semantic-run --project-root <workspace> --semantic-plan <json> \
+  --query-payload <json> --approve-validate --approve-publish --approve-execute
 ```
 
-In DeepSeek Harness, do not expand the composite onboarding commands back into these individual CLI
-operations. This order documents what the wrapper enforces internally and becomes a direct CLI workflow
-only after onboarding is complete.
+When the user has already asked to connect, build, and test a new local model, those flags implement
+that request and do not require separate question-by-question confirmation. Replacement, pruning, broad
+queries, destructive SQL, Git push, and production deployment still require their own clear scope.
 
-Composite commands are checkpointed and idempotent: a retry skips completed datasource, validation,
-publication, and verification phases when the approved contract and draft digest are unchanged. Fix a
-query payload in place and rerun the same semantic composite command; do not remove a successfully
-published bundle merely to recover from a later query-validation failure.
+The normal analysis order is:
 
-An already-completed profile may be reused from another DSH workspace when the approved connection
-contract is byte-for-byte equivalent. Run the datasource composite in the new workspace first; it adds
-that workspace as a non-destructive binding and reuses datasource/schema checkpoints. Then pass the
-current workspace explicitly as `--project-root` to the semantic composite. A secondary workspace may
-reuse an identical published semantic digest and run its own bounded verification query, but it cannot
-replace the published semantic layer; changes must be published from the original workspace or a new
-profile.
+```text
+datasource add/test -> namespace bind -> table/schema inspection
+TM/QM authoring -> models validate -> bundle add/update -> refresh/describe
+query validate -> bounded query execute -> tune -> optional Git handoff
+```
 
-Keep user business data separate from the sales-drop SQLite demo. Prefer a read-only database account,
-opaque CLI profile references, and bounded query limits.
+Stop only the PID recorded by this package and preserve the Runtime work directory unless the user
+explicitly requests removal.
+
+## Result
+
+Report the Runtime URL, namespace, datasource name, model directory, Bundle and QueryModel names,
+validation/query status, and useful evidence paths. Never include the password or business row values
+unless the user specifically asks for those values.

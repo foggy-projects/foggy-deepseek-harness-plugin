@@ -34,7 +34,29 @@
       }
     },
     "runtime": {"type": "object"},
-    "connection": {"$ref": "connection.schema.json"},
+    "connection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "connectionMode", "name", "type", "namespace"],
+      "properties": {
+        "schemaVersion": {"const": "foggy-deepseek-connection/v1"},
+        "connectionMode": {"enum": ["legacy-inline", "opaque-profile"]},
+        "credentialMode": {"enum": ["inline-development", "agent-environment", "opaque-profile", "none"]},
+        "name": {"type": "string"},
+        "type": {"type": "string"},
+        "jdbcUrl": {"type": ["string", "null"]},
+        "username": {"type": ["string", "null"]},
+        "passwordEnv": {"type": ["string", "null"]},
+        "opaqueProfileId": {"type": "string"},
+        "opaqueRevision": {"type": "string"},
+        "namespace": {"type": "string"},
+        "schemas": {"type": "array", "items": {"type": "string"}},
+        "modelsDir": {"type": "string"},
+        "readOnlyRecommended": {"type": "boolean"},
+        "profile": {"type": "string"},
+        "evidenceDir": {"type": "string"}
+      }
+    },
     "semantic": {"type": "object"},
     "steps": {"type": "object"},
     "artifacts": {"type": "object"}
