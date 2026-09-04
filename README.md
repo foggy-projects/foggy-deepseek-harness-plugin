@@ -14,11 +14,12 @@ modify `PATH`, or register Python globally. Advanced users may explicitly set
 ## Local beta installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.9.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.10.tgz
 ```
 
-Restart `dsh web`, open Settings → Plugins → Foggy Data Analysis, and initialize
-the components from there.
+Restart `dsh web`, use the browser it opens (or the complete printed URL,
+including `?token=...`), open Settings → Plugins → Foggy Data Analysis, and
+initialize the components from there. Do not share the launch-token URL.
 
 After npm beta publication, the corresponding one-line install is:
 

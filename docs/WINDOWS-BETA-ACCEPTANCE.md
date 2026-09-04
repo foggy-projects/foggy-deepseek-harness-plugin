@@ -1,7 +1,7 @@
 # Native Windows Beta acceptance
 
-This runbook validates DeepSeek Harness `0.1.1-rc.2` with Foggy plugin
-`0.4.0-beta.9` on a clean 64-bit Windows 10 or Windows 11 machine. Use a local
+This runbook validates DeepSeek Harness `0.1.2-rc.1` with Foggy plugin
+`0.4.0-beta.10` on a clean 64-bit Windows 10 or Windows 11 machine. Use a local
 directory that is not synchronized by OneDrive.
 
 ## Prerequisites
@@ -27,16 +27,21 @@ and is not registered as a system Python.
 New-Item -ItemType Directory -Force C:\FoggyAcceptance | Out-Null
 Set-Location C:\FoggyAcceptance
 
-npx --yes --package=@deepseek-ai/dsh@0.1.1-rc.2 --package=pnpm@11.7.0 `
+npx --yes --package=@deepseek-ai/dsh@0.1.2-rc.1 --package=pnpm@11.7.0 `
   dsh plugin --profile web add --workspace-root `
   "@foggy-projects/deepseek-harness-plugin@beta"
 
-npx --yes --package=@deepseek-ai/dsh@0.1.1-rc.2 --package=pnpm@11.7.0 dsh web
+npx --yes --package=@deepseek-ai/dsh@0.1.2-rc.1 --package=pnpm@11.7.0 dsh web
 ```
 
-Open `http://127.0.0.1:3080/`, configure an LLM provider, select the
-`C:\FoggyAcceptance` workspace, then open **Settings → Plugins → Foggy Data
-Analysis** and choose **Initialize Foggy**.
+Let DSH open the browser automatically. If it does not, copy the complete URL
+printed by `dsh web`, including its `?token=...` query, into the browser. A new
+browser session cannot use the bare `http://127.0.0.1:3080/` URL until that
+token has established its local authentication cookie. Treat the launch URL as
+temporary local access material and do not paste it into chat or diagnostics.
+
+Configure an LLM provider, select the `C:\FoggyAcceptance` workspace, then open
+**Settings → Plugins → Foggy Data Analysis** and choose **Initialize Foggy**.
 
 Expected component state:
 
@@ -44,7 +49,7 @@ Expected component state:
 - CLI 0.1.23;
 - Launcher 0.1.18;
 - analysis Skill 0.1.17;
-- onboarding Skill 0.4.0-beta.9;
+- onboarding Skill 0.4.0-beta.10;
 - Java 17+ available;
 - native DSH Skill registration available.
 

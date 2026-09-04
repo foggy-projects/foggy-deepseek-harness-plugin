@@ -1,10 +1,10 @@
-# Public beta readiness: 0.4.0-beta.9
+# Public beta readiness: 0.4.0-beta.10
 
 Assessment date: 2026-09-04
 
 ## Verdict
 
-`0.4.0-beta.9` is suitable for a scoped public beta on Windows 10/11 x64 and
+`0.4.0-beta.10` is suitable for a scoped public beta on Windows 10/11 x64 and
 Linux/WSL2 x64. It is not a general-availability release.
 
 The plugin package stays small and downloads large components only during
@@ -18,18 +18,22 @@ system PATH, registry, or a user's existing Python installation.
   runtime binary.
 - Managed CPython assets are pinned by URL, byte size, and SHA256 for Windows,
   Linux, and macOS on x64 and arm64.
-- Windows x64 completed a cold Python download, checksum verification,
-  extraction, initialization, forced Python repair, and doctor run.
-- Linux/WSL2 x64 completed managed Python extraction, initialization, and a live
-  DeepSeek Harness `0.1.1-rc.2` UI status check.
+- The component installer code is unchanged from beta.9, whose Windows x64 run
+  completed a cold Python download, checksum verification, extraction,
+  initialization, forced Python repair, and doctor run.
+- DeepSeek Harness `0.1.2-rc.1` loaded the beta.10 candidate Bundle, web client,
+  remote status service, and native Skill provider on both Windows and WSL2.
+- WSL2 reported the existing managed Python, CLI, Launcher, and analysis Skill
+  as ready; an isolated Windows profile correctly reported its fresh component
+  state and rejected the host's Java 12 as below the Java 17 prerequisite.
 - The UI reported Python 3.12.13 as `Foggy private`, and CLI 0.1.23, Launcher
-  0.1.18, analysis Skill 0.1.17, and onboarding Skill 0.4.0-beta.9 as installed.
+  0.1.18, analysis Skill 0.1.17, and onboarding Skill 0.4.0-beta.10 as installed.
 - Interrupted downloads resume with HTTP Range when the server supports it;
   downloaded artifacts are not trusted until the complete SHA256 matches.
 - Windows progress writes tolerate transient sharing violations without losing
   the previous valid progress document or leaving temporary files behind.
-- Automated regression passed under Node 22.23.2: 17 Node tests and 10 Python
-  tests, plus shell and PowerShell syntax checks.
+- Automated regression passed on Windows and Linux/WSL2: 17 Node tests and 10
+  Python tests on each platform, plus shell and PowerShell syntax checks.
 
 ## Beta boundaries
 
@@ -38,9 +42,9 @@ system PATH, registry, or a user's existing Python installation.
   `>=24.0.0`) and Java 17 or later. They do not need to install Python.
 - macOS and arm64 assets are pinned and integrity-checked but have not received
   the same end-to-end host validation; treat those targets as experimental.
-- DeepSeek Harness itself is still consumed at `0.1.1-rc.2`, so its plugin
-  installation and supply-chain policy behavior may change before a stable
-  Harness release.
+- DeepSeek Harness itself is consumed at `0.1.2-rc.1`. Its authenticated Web UI
+  launch URL, plugin installation, and supply-chain policy behavior may change
+  before a stable Harness release.
 - Runtime production authentication is outside this beta's default local
   onboarding mode. The UI and doctor continue to report `productionReady=false`
   for the development-only no-auth mode.

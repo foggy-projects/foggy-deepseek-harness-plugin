@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DSH_VERSION="0.1.1-rc.2"
+DSH_VERSION="0.1.2-rc.1"
 PNPM_VERSION="11.7.0"
-PLUGIN_VERSION="0.4.0-beta.9"
+PLUGIN_VERSION="0.4.0-beta.10"
 PLUGIN_REF="v${PLUGIN_VERSION}"
 PLUGIN_REPOSITORY="https://github.com/foggy-projects/foggy-deepseek-harness-plugin.git"
 
