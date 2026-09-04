@@ -14,7 +14,7 @@ modify `PATH`, or register Python globally. Advanced users may explicitly set
 ## Local beta installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.12.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.13.tgz
 ```
 
 Restart `dsh web`, use the browser it opens (or the complete printed URL,
@@ -60,9 +60,12 @@ and is restored by reinstalling or upgrading the plugin package.
 
 The Foggy settings tab shows the persisted database/semantic onboarding stages,
 offers pinned checks and repair for CLI, Launcher, and the managed analysis
-Skill, private Python, and exports a private redacted diagnostics report. Runtime start is
-idempotent: an already-recorded process is verified with `wait-ready` and
-`capabilities` instead of being treated as a failed second start.
+Skill, private Python, and exports a private redacted diagnostics report. The report
+includes bounded, sanitized tails of Runtime logs while refusing to read paths outside
+the managed Runtime directory. Runtime start monitors the Launcher PID during
+`wait-ready`, fails promptly if Java exits, and remains idempotent: an already-recorded
+process is verified with `wait-ready` and `capabilities` instead of being treated as a
+failed second start.
 
 This beta remains a local dev/test integration. The bundled Runtime reports
 `securityMode=none-dev-test-only` and must not be exposed to a network or used as

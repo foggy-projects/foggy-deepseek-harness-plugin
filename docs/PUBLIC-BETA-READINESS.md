@@ -1,10 +1,10 @@
-# Public beta readiness: 0.4.0-beta.12
+# Public beta readiness: 0.4.0-beta.13
 
 Assessment date: 2026-09-04
 
 ## Verdict
 
-`0.4.0-beta.12` is suitable for a scoped public beta on Windows 10/11 x64 and
+`0.4.0-beta.13` is suitable for a scoped public beta on Windows 10/11 x64 and
 Linux/WSL2 x64. It is not a general-availability release.
 
 The plugin package stays small and downloads large components only during
@@ -27,12 +27,16 @@ system PATH, registry, or a user's existing Python installation.
   as ready; an isolated Windows profile correctly reported its fresh component
   state and rejected the host's Java 12 as below the Java 17 prerequisite.
 - The UI reported Python 3.12.13 as `Foggy private`, and CLI 0.1.23, Launcher
-  0.1.18, analysis Skill 0.1.17, and onboarding Skill 0.4.0-beta.12 as installed.
+  0.1.18, analysis Skill 0.1.17, and onboarding Skill 0.4.0-beta.13 as installed.
 - Runtime startup now reports the current phase, elapsed/timeout seconds, and a
-  bounded progress value. A real WSL2 launch reached readiness in 13.4 seconds;
-  a forced timeout recorded failure evidence and cleaned up the Java process.
+  bounded progress value. A real Windows launch with Temurin 17 reached readiness
+  and passed capabilities in 18.9 seconds. A controlled post-launch Java exit was
+  detected after about 1 second instead of waiting for the 180-second deadline;
+  a restored healthy launch then passed again in 15.9 seconds.
 - Diagnostic export success remains visible alongside a prior Runtime startup
-  error, including the generated local JSON path.
+  error, including the generated local JSON path. Exported failures include
+  bounded sanitized Runtime log tails and reject log paths outside the managed
+  Runtime directory.
 - Interrupted downloads resume with HTTP Range when the server supports it;
   downloaded artifacts are not trusted until the complete SHA256 matches.
 - Windows progress writes tolerate transient sharing violations without losing

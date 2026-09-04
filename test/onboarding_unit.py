@@ -2,6 +2,8 @@ import importlib.util
 import os
 from pathlib import Path
 import tempfile
+import subprocess
+import time
 import unittest
 from unittest.mock import patch
 import json
@@ -99,6 +101,39 @@ class OnboardingUnitTests(unittest.TestCase):
             payload = json.loads(target.read_text(encoding="utf-8"))
             self.assertEqual(payload["phase"], "runtime-readiness")
             self.assertGreaterEqual(payload["timing"]["elapsedSeconds"], 1)
+
+    def test_command_progress_stops_when_watched_runtime_exits(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "operation-progress.json"
+            progress = onboarding.ProgressReporter(str(target), "runtime-test", "runtime-start", total_steps=6)
+            runtime = subprocess.Popen([
+                onboarding.sys.executable,
+                "-c",
+                "import time; time.sleep(0.08)",
+            ])
+            started = time.monotonic()
+            try:
+                with self.assertRaisesRegex(onboarding.OnboardingError, "exited before becoming ready"):
+                    onboarding.command_result_with_progress(
+                        [onboarding.sys.executable, "-c", "import time; time.sleep(5)"],
+                        6,
+                        progress,
+                        phase="runtime-readiness",
+                        step_index=3,
+                        message="Waiting",
+                        readiness_timeout=5,
+                        start_percent=30,
+                        end_percent=85,
+                        poll_interval=0.05,
+                        watched_pid=runtime.pid,
+                    )
+            finally:
+                runtime.wait(timeout=2)
+            self.assertLess(time.monotonic() - started, 1.0)
+
+    def test_process_running_detects_current_process(self):
+        self.assertTrue(onboarding.process_running(os.getpid()))
+        self.assertFalse(onboarding.process_running(0))
 
     def test_persistent_profile_store_is_private_and_overrideable(self):
         with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, {}, clear=False):

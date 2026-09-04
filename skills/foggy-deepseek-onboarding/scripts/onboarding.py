@@ -277,6 +277,46 @@ def command_result(command: list[str], timeout: int = 30, check: bool = False) -
     return payload
 
 
+def process_running(pid: int) -> bool:
+    """Check liveness without spawning a shell or waiting on the target process."""
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+
+        synchronize = 0x00100000
+        wait_timeout = 0x00000102
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        kernel32.WaitForSingleObject.restype = ctypes.c_uint32
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        handle = kernel32.OpenProcess(synchronize, False, pid)
+        if not handle:
+            return ctypes.get_last_error() == 5  # Access denied still proves the PID exists.
+        try:
+            return kernel32.WaitForSingleObject(handle, 0) == wait_timeout
+        finally:
+            kernel32.CloseHandle(handle)
+    proc_stat = Path("/proc") / str(pid) / "stat"
+    if proc_stat.is_file():
+        try:
+            fields = proc_stat.read_text(encoding="utf-8", errors="replace").rsplit(") ", 1)[1]
+            return bool(fields) and fields[0] != "Z"
+        except (OSError, IndexError):
+            pass
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
 def command_result_with_progress(
     command: list[str],
     timeout: int,
@@ -289,6 +329,8 @@ def command_result_with_progress(
     start_percent: int,
     end_percent: int,
     poll_interval: float = 1.0,
+    watched_pid: int | None = None,
+    watched_label: str = "Runtime",
 ) -> dict:
     started = time.monotonic()
     try:
@@ -318,6 +360,13 @@ def command_result_with_progress(
             break
         except subprocess.TimeoutExpired:
             elapsed = time.monotonic() - started
+            if watched_pid and not process_running(watched_pid):
+                process.kill()
+                process.communicate()
+                raise OnboardingError(
+                    f"{watched_label} process PID {watched_pid} exited before becoming ready "
+                    f"after {round(elapsed * 1000)} ms"
+                )
             readiness_fraction = min(elapsed / max(readiness_timeout, 1), 1.0)
             percent = round(start_percent + (end_percent - start_percent) * readiness_fraction)
             progress.update(
@@ -1463,6 +1512,7 @@ def runtime_start_command(args: argparse.Namespace) -> dict:
                 readiness_timeout=readiness_timeout,
                 start_percent=30,
                 end_percent=85,
+                watched_pid=int(prior["pid"]),
             )
             wait_payload = parse_json_output(wait_result, "wait-ready")
             if wait_payload.get("success") is not True:
@@ -1577,6 +1627,7 @@ def runtime_start_command(args: argparse.Namespace) -> dict:
             readiness_timeout=readiness_timeout,
             start_percent=30,
             end_percent=85,
+            watched_pid=pid,
         )
         wait_payload = parse_json_output(wait_result, "wait-ready")
         if wait_payload.get("success") is not True:

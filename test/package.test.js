@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { access, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -9,12 +9,13 @@ import { fileURLToPath } from 'node:url'
 import { compatible, compatibleNode, versionParts } from '../lib/version.js'
 import { ensurePythonRuntime, managedPythonExecutable, probePythonRuntime, pythonAssetKey, selectPythonAsset } from '../lib/python-runtime.js'
 import { writeJsonAtomic } from '../lib/atomic-json.js'
+import { enrichRuntimeStartFailure, readDiagnosticLogTail, sanitizeDiagnosticText } from '../lib/diagnostics.js'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.0-beta.12')
+  assert.equal(pkg.version, '0.4.0-beta.13')
   assert.equal(pkg.engines.node, '^22.19.0 || >=24.0.0')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
@@ -34,13 +35,13 @@ test('bundle patch mounts the dual-face Foggy package', async () => {
 test('documents the pnpm workspace-root install required by DSH 0.1.2 rc.1', async () => {
   const readme = await readFile(join(root, 'README.md'), 'utf8')
   assert.match(readme, /dsh plugin --profile web add --workspace-root/)
-  assert.match(readme, /0\.4\.0-beta\.12\.tgz/)
+  assert.match(readme, /0\.4\.0-beta\.13\.tgz/)
   assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@beta/)
 })
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.0-beta.12')
+  assert.equal(versions.packageVersion, '0.4.0-beta.13')
   assert.equal(versions.components.deepseekHarness.version, '0.1.2-rc.1')
   assert.equal(versions.components.python.version, '3.12.13')
   assert.equal(versions.components.cli.version, '0.1.23')
@@ -76,6 +77,43 @@ test('does not silently fall back to a system executable for private Python', as
     assert.match(notPython.error, /not Python/)
   } finally {
     await rm(installRoot, { recursive: true, force: true })
+  }
+})
+
+test('exports bounded sanitized Runtime log tails without reading outside the Runtime root', async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'foggy-diagnostics-'))
+  const runtimeRoot = join(dataRoot, 'runtime')
+  const logPath = join(runtimeRoot, 'runtime.out.log')
+  const outsidePath = join(dataRoot, 'outside.log')
+  await mkdir(runtimeRoot)
+  await writeFile(logPath, [
+    'DEEPSEEK_API_KEY=sk-sensitive-value-123456',
+    'Authorization: Bearer secret-bearer-value',
+    'jdbc:mysql://demo:database-password@127.0.0.1/demo?password=also-secret',
+    'java.lang.IllegalStateException: Runtime failed safely',
+  ].join('\n'))
+  await writeFile(outsidePath, 'must-not-be-read')
+  try {
+    const sanitized = sanitizeDiagnosticText('token=secret-value java.lang.IllegalStateException')
+    assert.doesNotMatch(sanitized, /secret-value/)
+    assert.match(sanitized, /\[REDACTED\]/)
+
+    const tail = await readDiagnosticLogTail(logPath, { allowedRoot: runtimeRoot })
+    assert.match(tail.sanitizedTail, /IllegalStateException/)
+    assert.doesNotMatch(tail.sanitizedTail, /sensitive-value|database-password|also-secret|secret-bearer-value/)
+    assert.match(tail.sanitizedTail, /jdbc:\[REDACTED_CONNECTION_URL\]/)
+
+    const failure = await enrichRuntimeStartFailure({
+      logs: [
+        { name: 'stdoutLog', path: logPath, exists: true },
+        { name: 'outsideLog', path: outsidePath, exists: true },
+      ],
+    }, dataRoot)
+    assert.match(failure.logs[0].sanitizedTail, /Runtime failed safely/)
+    assert.equal(failure.logs[1].tailError, 'LOG_PATH_OUTSIDE_RUNTIME_ROOT')
+    assert.equal(failure.logs[1].sanitizedTail, '')
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true })
   }
 })
 
