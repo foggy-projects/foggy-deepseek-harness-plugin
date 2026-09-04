@@ -1,6 +1,6 @@
 {
   "schemaVersion": "foggy-deepseek-onboarding-versions/v1",
-  "packageVersion": "0.4.0-beta.13",
+  "packageVersion": "0.4.0-beta.14",
   "validatedAt": "2026-09-04",
   "components": {
     "deepseekHarness": {
@@ -129,7 +129,7 @@
     }
   },
   "defaults": {
-    "port": 18066,
+    "port": 18166,
     "namespace": "default",
     "readinessTimeoutSeconds": 180,
     "securityMode": "none-dev-test-only"

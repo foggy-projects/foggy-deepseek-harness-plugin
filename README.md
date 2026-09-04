@@ -14,7 +14,7 @@ modify `PATH`, or register Python globally. Advanced users may explicitly set
 ## Local beta installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.13.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.14.tgz
 ```
 
 Restart `dsh web`, use the browser it opens (or the complete printed URL,
@@ -66,6 +66,12 @@ the managed Runtime directory. Runtime start monitors the Launcher PID during
 `wait-ready`, fails promptly if Java exits, and remains idempotent: an already-recorded
 process is verified with `wait-ready` and `capabilities` instead of being treated as a
 failed second start.
+
+The same settings tab owns a persistent local Runtime port. New installations default
+to `18166`; users can choose another port while Runtime is stopped. Startup checks the
+same wildcard binding used by the Java server, so a conflicting application or Windows
+port proxy produces an immediate, high-visibility error instead of a readiness timeout.
+The CLI and Skills resolve the resulting stable Runtime URL from managed state.
 
 This beta remains a local dev/test integration. The bundled Runtime reports
 `securityMode=none-dev-test-only` and must not be exposed to a network or used as

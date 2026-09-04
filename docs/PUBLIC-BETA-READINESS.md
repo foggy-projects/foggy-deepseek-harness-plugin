@@ -1,10 +1,10 @@
-# Public beta readiness: 0.4.0-beta.13
+# Public beta readiness: 0.4.0-beta.14
 
 Assessment date: 2026-09-04
 
 ## Verdict
 
-`0.4.0-beta.13` is suitable for a scoped public beta on Windows 10/11 x64 and
+`0.4.0-beta.14` is suitable for a scoped public beta on Windows 10/11 x64 and
 Linux/WSL2 x64. It is not a general-availability release.
 
 The plugin package stays small and downloads large components only during
@@ -14,7 +14,7 @@ system PATH, registry, or a user's existing Python installation.
 
 ## Verified behavior
 
-- The npm tarball is about 67 KB compressed and contains no Python or Java
+- The npm tarball is about 78 KB compressed and contains no Python or Java
   runtime binary.
 - Managed CPython assets are pinned by URL, byte size, and SHA256 for Windows,
   Linux, and macOS on x64 and arm64.
@@ -27,7 +27,7 @@ system PATH, registry, or a user's existing Python installation.
   as ready; an isolated Windows profile correctly reported its fresh component
   state and rejected the host's Java 12 as below the Java 17 prerequisite.
 - The UI reported Python 3.12.13 as `Foggy private`, and CLI 0.1.23, Launcher
-  0.1.18, analysis Skill 0.1.17, and onboarding Skill 0.4.0-beta.13 as installed.
+  0.1.18, analysis Skill 0.1.17, and onboarding Skill 0.4.0-beta.14 as installed.
 - Runtime startup now reports the current phase, elapsed/timeout seconds, and a
   bounded progress value. A real Windows launch with Temurin 17 reached readiness
   and passed capabilities in 18.9 seconds. A controlled post-launch Java exit was
@@ -37,11 +37,17 @@ system PATH, registry, or a user's existing Python installation.
   error, including the generated local JSON path. Exported failures include
   bounded sanitized Runtime log tails and reject log paths outside the managed
   Runtime directory.
+- Runtime port configuration is persisted below the private Foggy data root and
+  defaults to `18166`. The settings UI validates `1024–65535`, prevents changes
+  while Runtime is active, and shows port conflicts as an assertive, red bordered
+  alert. Preflight now checks `0.0.0.0` with exclusive Windows binding semantics,
+  matching the Java server closely enough to detect address-specific `portproxy`
+  conflicts that a loopback-only probe missed.
 - Interrupted downloads resume with HTTP Range when the server supports it;
   downloaded artifacts are not trusted until the complete SHA256 matches.
 - Windows progress writes tolerate transient sharing violations without losing
   the previous valid progress document or leaving temporary files behind.
-- Automated regression passed on Windows and Linux/WSL2: 17 Node tests and 10
+- Automated regression passed on Windows and Linux/WSL2: 20 Node tests and 17
   Python tests on each platform, plus shell and PowerShell syntax checks.
 
 ## Beta boundaries

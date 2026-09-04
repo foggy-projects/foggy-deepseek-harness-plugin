@@ -1,7 +1,7 @@
 # Native Windows Beta acceptance
 
 This runbook validates DeepSeek Harness `0.1.2-rc.1` with Foggy plugin
-`0.4.0-beta.13` on a clean 64-bit Windows 10 or Windows 11 machine. Use a local
+`0.4.0-beta.14` on a clean 64-bit Windows 10 or Windows 11 machine. Use a local
 directory that is not synchronized by OneDrive.
 
 ## Prerequisites
@@ -43,13 +43,18 @@ temporary local access material and do not paste it into chat or diagnostics.
 Configure an LLM provider, select the `C:\FoggyAcceptance` workspace, then open
 **Settings → Plugins → Foggy Data Analysis** and choose **Initialize Foggy**.
 
+Before starting Runtime, confirm the configured port in **Runtime connection
+settings**. A fresh profile defaults to `18166`. To use another port, enter an
+integer from `1024` through `65535` and choose **Save port**. The value remains
+stable across DSH restarts and cannot be changed while Runtime is running.
+
 Expected component state:
 
 - Python 3.12.13, source `Foggy private`;
 - CLI 0.1.23;
 - Launcher 0.1.18;
 - analysis Skill 0.1.17;
-- onboarding Skill 0.4.0-beta.13;
+- onboarding Skill 0.4.0-beta.14;
 - Java 17+ available;
 - native DSH Skill registration available.
 
@@ -60,6 +65,12 @@ The plugin monitors the Launcher PID and fails promptly when Java exits before
 readiness. On failure, export diagnostics before retrying; the report includes
 the startup phase, PID state, evidence directory, Runtime log locations, and
 bounded sanitized log tails.
+
+If the configured port is occupied, startup must fail during preflight instead
+of waiting for the readiness deadline. The settings page displays a red bordered
+alert naming the port conflict and tells the user to save another port or release
+the conflicting application or Windows port proxy. Saving a free port and
+starting again must clear the applicable conflict state.
 
 ## Database and semantic-layer acceptance
 
@@ -80,4 +91,4 @@ profile。请先确认连接和表结构，再围绕订单数据创建一个简�
 Pass only when Runtime readiness and capabilities succeed, datasource metadata
 can be discovered, TM/QM models validate and publish, the bounded read-only
 query succeeds, diagnostics contain no credentials, and stopping Runtime frees
-port 18066.
+the configured port (default `18166`).

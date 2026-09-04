@@ -10,12 +10,19 @@ import { compatible, compatibleNode, versionParts } from '../lib/version.js'
 import { ensurePythonRuntime, managedPythonExecutable, probePythonRuntime, pythonAssetKey, selectPythonAsset } from '../lib/python-runtime.js'
 import { writeJsonAtomic } from '../lib/atomic-json.js'
 import { enrichRuntimeStartFailure, readDiagnosticLogTail, sanitizeDiagnosticText } from '../lib/diagnostics.js'
+import {
+  DEFAULT_RUNTIME_PORT,
+  normalizeRuntimePort,
+  readRuntimeSettings,
+  runtimeUrlForPort,
+  writeRuntimeSettings,
+} from '../lib/runtime-settings.js'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.0-beta.13')
+  assert.equal(pkg.version, '0.4.0-beta.14')
   assert.equal(pkg.engines.node, '^22.19.0 || >=24.0.0')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
@@ -35,18 +42,56 @@ test('bundle patch mounts the dual-face Foggy package', async () => {
 test('documents the pnpm workspace-root install required by DSH 0.1.2 rc.1', async () => {
   const readme = await readFile(join(root, 'README.md'), 'utf8')
   assert.match(readme, /dsh plugin --profile web add --workspace-root/)
-  assert.match(readme, /0\.4\.0-beta\.13\.tgz/)
+  assert.match(readme, /0\.4\.0-beta\.14\.tgz/)
   assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@beta/)
 })
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.0-beta.13')
+  assert.equal(versions.packageVersion, '0.4.0-beta.14')
   assert.equal(versions.components.deepseekHarness.version, '0.1.2-rc.1')
   assert.equal(versions.components.python.version, '3.12.13')
   assert.equal(versions.components.cli.version, '0.1.23')
   assert.equal(versions.components.launcher.version, '0.1.18')
+  assert.equal(versions.defaults.port, 18166)
   assert.ok(versions.components.launcher.assets.every((asset) => asset.url && asset.sha256))
+})
+
+test('persists one stable validated Runtime port in the plugin data root', async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'foggy-runtime-settings-'))
+  try {
+    const defaults = await readRuntimeSettings(dataRoot, { defaultPort: DEFAULT_RUNTIME_PORT })
+    assert.equal(defaults.source, 'default')
+    assert.equal(defaults.port, 18166)
+    assert.equal(defaults.runtimeUrl, 'http://127.0.0.1:18166')
+
+    const saved = await writeRuntimeSettings(dataRoot, { port: 19166 })
+    assert.equal(saved.port, 19166)
+    assert.equal(saved.runtimeUrl, runtimeUrlForPort(19166))
+    const reloaded = await readRuntimeSettings(dataRoot)
+    assert.equal(reloaded.source, 'configured')
+    assert.equal(reloaded.port, 19166)
+    assert.equal(reloaded.valid, true)
+
+    assert.throws(() => normalizeRuntimePort(80), /between 1024 and 65535/)
+    assert.throws(() => normalizeRuntimePort(70000), /between 1024 and 65535/)
+    assert.throws(() => normalizeRuntimePort('not-a-port'), /between 1024 and 65535/)
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true })
+  }
+})
+
+test('reports an invalid persisted Runtime setting instead of silently changing ports', async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), 'foggy-runtime-settings-invalid-'))
+  try {
+    await writeFile(join(dataRoot, 'runtime-settings.json'), '{"schemaVersion":"wrong","runtimePort":18166}')
+    const settings = await readRuntimeSettings(dataRoot)
+    assert.equal(settings.valid, false)
+    assert.equal(settings.source, 'invalid')
+    assert.match(settings.error, /expected schemaVersion/)
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true })
+  }
 })
 
 test('pins private Python distributions for supported desktop platforms', async () => {
@@ -276,14 +321,17 @@ test('exposes persistent initialization and Runtime startup progress to the web 
   assert.match(client, /foggy-progress-fill/)
   assert.match(client, /progressRuntimeReadiness/)
   assert.match(client, /progress\.timing\?\.elapsedSeconds/)
-  assert.match(client, /operationError \? jsx\('p'/)
-  assert.match(client, /!busy && view\.message \? jsx\('p'/)
+  assert.match(client, /foggy-error-panel/)
+  assert.match(client, /role: 'alert'/)
+  assert.match(client, /saveRuntimeSettings/)
+  assert.match(client, /portUnavailableTitle/)
   assert.match(onboarding, /PROGRESS_SCHEMA = "foggy-deepseek-onboarding-progress\/v1"/)
   assert.match(onboarding, /--progress-file/)
   assert.match(onboarding, /command_result_with_progress/)
   assert.match(onboarding, /last-runtime-start-failure\.json/)
   assert.match(gateway, /args\[0\] === 'install' \|\| args\[0\] === 'runtime-start'/)
   assert.match(gateway, /'runtime-start', '--install-root', roots\.installRoot, '--data-root', roots\.dataRoot/)
+  assert.match(gateway, /'--port', String\(settings\.port\)/)
 })
 
 test('registers Skills natively and keeps managed analysis assets global', async () => {
@@ -324,4 +372,5 @@ test('exposes public-beta recovery, diagnostics, and onboarding progress control
   assert.match(onboarding, /already-running-verified/)
   assert.match(onboarding, /workspaceBindings/)
   assert.match(remoteDescriptor, /descriptor\('repairPython'\)/)
+  assert.match(remoteDescriptor, /descriptor\('saveRuntimeSettings'/)
 })

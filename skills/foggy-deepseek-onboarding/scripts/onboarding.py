@@ -25,6 +25,8 @@ import zipfile
 
 STATE_SCHEMA = "foggy-deepseek-onboarding-install/v1"
 RUNTIME_STATE_SCHEMA = "foggy-deepseek-onboarding-runtime/v1"
+RUNTIME_SETTINGS_SCHEMA = "foggy-deepseek-runtime-settings/v1"
+RUNTIME_PORT_CONFLICT_SCHEMA = "foggy-deepseek-runtime-port-conflict/v1"
 ONBOARDING_STATE_SCHEMA = "foggy-deepseek-onboarding-state/v1"
 MANAGED_SKILL_SCHEMA = "foggy-managed-skill/v1"
 MANAGED_SKILL_MARKER = ".foggy-managed-skill.json"
@@ -41,6 +43,14 @@ MODEL_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 
 class OnboardingError(RuntimeError):
     pass
+
+
+class RuntimeSettingsError(OnboardingError):
+    code = "RUNTIME_SETTINGS_INVALID"
+
+
+class RuntimePortUnavailableError(OnboardingError):
+    code = "RUNTIME_PORT_UNAVAILABLE"
 
 
 PROGRESS_SCHEMA = "foggy-deepseek-onboarding-progress/v1"
@@ -204,6 +214,61 @@ def default_data_root() -> Path:
         return Path(base) / "Foggy" / "DeepSeekHarnessData"
     base = os.environ.get("XDG_STATE_HOME")
     return Path(base) / "foggy" / "deepseek-harness" if base else Path.home() / ".local" / "state" / "foggy" / "deepseek-harness"
+
+
+def validate_runtime_port(value: object) -> int:
+    if isinstance(value, bool):
+        raise RuntimeSettingsError("Runtime port must be an integer between 1024 and 65535")
+    try:
+        port = int(value)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeSettingsError("Runtime port must be an integer between 1024 and 65535") from exc
+    if str(value).strip() != str(port) or port < 1024 or port > 65535:
+        raise RuntimeSettingsError("Runtime port must be an integer between 1024 and 65535")
+    return port
+
+
+def read_runtime_settings(data_root: Path, default_port: object) -> dict:
+    path = data_root / "runtime-settings.json"
+    if not path.is_file():
+        port = validate_runtime_port(default_port)
+        return {"schemaVersion": RUNTIME_SETTINGS_SCHEMA, "port": port, "source": "default", "path": str(path)}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeSettingsError(f"Runtime settings file is invalid: {path}") from exc
+    if payload.get("schemaVersion") != RUNTIME_SETTINGS_SCHEMA:
+        raise RuntimeSettingsError(f"Unexpected Runtime settings schema in {path}")
+    port = validate_runtime_port(payload.get("runtimePort"))
+    return {"schemaVersion": RUNTIME_SETTINGS_SCHEMA, "port": port, "source": "configured", "path": str(path)}
+
+
+def assert_runtime_port_available(data_root: Path, port: int) -> None:
+    conflict_path = data_root / "last-runtime-port-conflict.json"
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        try:
+            # The packaged Java server uses a wildcard listener. Checking only
+            # 127.0.0.1 misses Windows portproxy entries bound to another local address.
+            probe.bind(("0.0.0.0", port))
+        except OSError as exc:
+            message = (
+                f"Runtime port {port} is unavailable. Another application or Windows port proxy "
+                "is already listening. Choose a different port in Foggy plugin settings or release "
+                "the port before retrying."
+            )
+            conflict = {
+                "schemaVersion": RUNTIME_PORT_CONFLICT_SCHEMA,
+                "detectedAt": now_utc(),
+                "port": port,
+                "bindAddress": "0.0.0.0",
+                "runtimeUrl": f"http://127.0.0.1:{port}",
+                "message": message,
+            }
+            atomic_json(conflict_path, conflict)
+            raise RuntimePortUnavailableError(message) from exc
+    conflict_path.unlink(missing_ok=True)
 
 
 def normalized(path: str | Path) -> Path:
@@ -1556,12 +1621,9 @@ def runtime_start_command(args: argparse.Namespace) -> dict:
             }
         existing.unlink()
     progress.update("runtime-preflight", 1, "Checking port and Runtime workspace", percent=10)
-    port = args.port or int(versions["defaults"]["port"])
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        try:
-            probe.bind(("127.0.0.1", port))
-        except OSError as exc:
-            raise OnboardingError(f"Port {port} is not available") from exc
+    configured_runtime = read_runtime_settings(data_root, versions["defaults"]["port"])
+    port = validate_runtime_port(args.port) if args.port is not None else configured_runtime["port"]
+    assert_runtime_port_available(data_root, port)
     work_dir = data_root / "runtime"
     work_dir.mkdir(parents=True, exist_ok=True)
     launcher_dir = normalized(state["launcher"]["path"])
@@ -3262,7 +3324,7 @@ def main() -> None:
     except OnboardingError as exc:
         if ACTIVE_PROGRESS is not None:
             ACTIVE_PROGRESS.fail(exc)
-        emit({"success": False, "error": {"code": "ONBOARDING_ERROR", "message": str(exc)}, "productionReady": False}, 1)
+        emit({"success": False, "error": {"code": getattr(exc, "code", "ONBOARDING_ERROR"), "message": str(exc)}, "productionReady": False}, 1)
     except Exception as exc:
         if ACTIVE_PROGRESS is not None:
             ACTIVE_PROGRESS.fail(exc)

@@ -18,6 +18,39 @@ SPEC.loader.exec_module(onboarding)
 
 
 class OnboardingUnitTests(unittest.TestCase):
+    def test_runtime_settings_default_and_persisted_port(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            data_root = Path(temporary)
+            default = onboarding.read_runtime_settings(data_root, 18166)
+            self.assertEqual(default["port"], 18166)
+            self.assertEqual(default["source"], "default")
+
+            (data_root / "runtime-settings.json").write_text(json.dumps({
+                "schemaVersion": onboarding.RUNTIME_SETTINGS_SCHEMA,
+                "runtimePort": 19166,
+            }), encoding="utf-8")
+            configured = onboarding.read_runtime_settings(data_root, 18166)
+            self.assertEqual(configured["port"], 19166)
+            self.assertEqual(configured["source"], "configured")
+
+    def test_runtime_settings_reject_invalid_port(self):
+        with self.assertRaisesRegex(onboarding.RuntimeSettingsError, "between 1024 and 65535"):
+            onboarding.validate_runtime_port(80)
+        with self.assertRaisesRegex(onboarding.RuntimeSettingsError, "between 1024 and 65535"):
+            onboarding.validate_runtime_port("18166.5")
+
+    def test_runtime_port_preflight_uses_wildcard_and_records_conflict(self):
+        with tempfile.TemporaryDirectory() as temporary, onboarding.socket.socket(onboarding.socket.AF_INET, onboarding.socket.SOCK_STREAM) as listener:
+            data_root = Path(temporary)
+            listener.bind(("0.0.0.0", 0))
+            listener.listen(1)
+            port = listener.getsockname()[1]
+            with self.assertRaisesRegex(onboarding.RuntimePortUnavailableError, f"Runtime port {port} is unavailable"):
+                onboarding.assert_runtime_port_available(data_root, port)
+            conflict = json.loads((data_root / "last-runtime-port-conflict.json").read_text(encoding="utf-8"))
+            self.assertEqual(conflict["port"], port)
+            self.assertEqual(conflict["bindAddress"], "0.0.0.0")
+
     def test_atomic_json_retries_transient_windows_style_lock(self):
         with tempfile.TemporaryDirectory() as temporary:
             target = Path(temporary) / "operation-progress.json"
