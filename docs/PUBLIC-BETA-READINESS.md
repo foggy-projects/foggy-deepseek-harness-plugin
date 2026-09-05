@@ -1,10 +1,10 @@
-# Public beta readiness: 0.4.0-beta.18
+# Public beta readiness: 0.4.0-rc.1
 
 Assessment date: 2026-09-05
 
 ## Verdict
 
-`0.4.0-beta.18` is suitable for a scoped public beta on Windows 10/11 x64 and
+`0.4.0-rc.1` is suitable for a scoped public beta on Windows 10/11 x64 and
 Linux/WSL2 x64. It is not a general-availability release.
 
 The plugin package stays small and downloads large components only during
@@ -14,7 +14,7 @@ system PATH, registry, or a user's existing Python installation.
 
 ## Verified behavior
 
-- The npm tarball is about 78 KB compressed and contains no Python or Java
+- The npm tarball is about 83 KB compressed and contains no Python or Java
   runtime binary.
 - Managed CPython assets are pinned by URL, byte size, and SHA256 for Windows,
   Linux, and macOS on x64 and arm64.
@@ -42,7 +42,7 @@ system PATH, registry, or a user's existing Python installation.
   copy of the synthetic password.
 - The package and settings contract report Python 3.12.13 as `Foggy private`,
   CLI 0.1.23, Launcher 0.1.20, analysis Skill 0.1.17, and onboarding Skill
-  0.4.0-beta.18; the same component display was accepted in the preceding
+  0.4.0-rc.1; the same component display was accepted in the preceding
   native Windows beta run.
 - Runtime startup now reports the current phase, elapsed/timeout seconds, and a
   bounded progress value. A real Windows launch with Temurin 17 reached readiness
@@ -63,7 +63,7 @@ system PATH, registry, or a user's existing Python installation.
   downloaded artifacts are not trusted until the complete SHA256 matches.
 - Windows progress writes tolerate transient sharing violations without losing
   the previous valid progress document or leaving temporary files behind.
-- Current automated regression passes 20 Node tests and 25 Python tests. The
+- Current automated regression passes 20 Node tests and 29 Python tests. The
   new datasource tests cover secret-free persisted state, direct Runtime API
   submission, CLI bypass for inline development credentials, stable inline
   credential resumption, bounded transient connection retry, and output redaction.
