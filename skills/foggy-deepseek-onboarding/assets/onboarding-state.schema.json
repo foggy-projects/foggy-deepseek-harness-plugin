@@ -28,6 +28,13 @@
           "queryModel": {"type": "string"},
           "queryPayloadDigest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
           "rowCount": {"type": ["integer", "null"], "minimum": 0},
+          "warningCount": {"type": "integer", "minimum": 0},
+          "warningCodes": {
+            "type": "array",
+            "items": {"type": "string"},
+            "uniqueItems": true
+          },
+          "warningEvidence": {"type": ["string", "null"]},
           "verifiedAt": {"type": "string", "format": "date-time"}
         },
         "additionalProperties": false

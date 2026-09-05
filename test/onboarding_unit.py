@@ -548,6 +548,101 @@ class OnboardingUnitTests(unittest.TestCase):
             self.assertIsNotNone(onboarding.workspace_query_verification(state, first, "OrderQuery", "abc"))
             self.assertIsNone(onboarding.workspace_query_verification(state, second, "OrderQuery", "abc"))
 
+    def test_runtime_warnings_collect_nested_values_without_duplication(self):
+        warning = {
+            "code": "UNKNOWN_QUERY_PROPERTY_IGNORED",
+            "path": "$.groupBy[0].grain",
+            "action": "ignored",
+            "semanticImpact": "query_result_may_differ",
+        }
+        payload = {
+            "warnings": [warning],
+            "data": {
+                "warnings": [warning, "legacy warning"],
+            },
+        }
+
+        warnings = onboarding.runtime_warnings(payload, "query-validate")
+
+        self.assertEqual(len(warnings), 2)
+        self.assertEqual(warnings[0]["code"], "UNKNOWN_QUERY_PROPERTY_IGNORED")
+        self.assertEqual(warnings[0]["stages"], ["query-validate"])
+        self.assertEqual(warnings[1], {"message": "legacy warning", "stages": ["query-validate"]})
+
+    def test_runtime_warning_collection_is_compatible_with_old_success_responses(self):
+        payload = {"success": True, "data": {"valid": True}}
+
+        self.assertEqual(onboarding.runtime_warnings(payload, "query-validate"), [])
+        self.assertEqual(onboarding.runtime_warning_codes([]), [])
+
+    def test_runtime_warning_merge_retains_all_emitting_stages(self):
+        warning = {
+            "code": "UNKNOWN_QUERY_PROPERTY_IGNORED",
+            "path": "$.groupBy[0].grain",
+            "action": "ignored",
+        }
+        validated = onboarding.runtime_warnings({"warnings": [warning]}, "query-validate")
+        executed = onboarding.runtime_warnings({"data": {"warnings": [warning]}}, "query-execute")
+
+        merged = onboarding.merge_runtime_warnings(validated, executed)
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["stages"], ["query-validate", "query-execute"])
+        self.assertEqual(onboarding.runtime_warning_codes(merged), ["UNKNOWN_QUERY_PROPERTY_IGNORED"])
+
+    def test_semantic_verify_surfaces_success_warnings_and_persists_summary(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project_root = root / "workspace"
+            project_root.mkdir()
+            data_root = root / "state"
+            payload_path = project_root / "query.json"
+            payload_path.write_text(json.dumps({"columns": ["orderDate"], "limit": 20}), encoding="utf-8")
+            warning = {
+                "code": "UNKNOWN_QUERY_PROPERTY_IGNORED",
+                "path": "$.groupBy[0].grain",
+                "action": "ignored",
+                "semanticImpact": "query_result_may_differ",
+            }
+            state = {
+                "profile": "demo",
+                "projectRoot": str(project_root.resolve()),
+                "connection": {"namespace": "demo"},
+                "semantic": {"queryModels": ["OrderQuery"]},
+                "steps": {"semanticPublished": {"status": "completed"}},
+                "workspaceVerifications": [],
+                "artifacts": {},
+            }
+            args = type("Args", (), {
+                "install_root": None,
+                "data_root": None,
+                "profile": "demo",
+                "query_model": "OrderQuery",
+                "query_payload": str(payload_path),
+                "project_root": str(project_root),
+                "execute": True,
+            })()
+            cli_results = [
+                {"success": True, "data": {"models": ["OrderQuery"]}},
+                {"success": True, "data": {"fields": [{"fieldName": "orderDate"}]}},
+                {"success": True, "warnings": [warning], "data": {"valid": True}},
+                {"success": True, "data": {"warnings": [warning], "rows": [{"orderDate": "2026-01"}]}},
+            ]
+            with (
+                patch.object(onboarding, "require_profile", return_value=(state, {}, data_root, {})),
+                patch.object(onboarding, "cli_json", side_effect=cli_results),
+                patch.object(onboarding, "write_onboarding_state", return_value=data_root / "profile.json"),
+            ):
+                result = onboarding.semantic_verify_command(args)
+
+            self.assertTrue(result["success"])
+            self.assertEqual(result["warningCount"], 1)
+            self.assertEqual(result["warningCodes"], ["UNKNOWN_QUERY_PROPERTY_IGNORED"])
+            self.assertEqual(result["warnings"][0]["stages"], ["query-validate", "query-execute"])
+            self.assertEqual(state["steps"]["semanticVerified"]["warningCount"], 1)
+            self.assertEqual(state["workspaceVerifications"][0]["warningCodes"], ["UNKNOWN_QUERY_PROPERTY_IGNORED"])
+            self.assertTrue(Path(state["workspaceVerifications"][0]["warningEvidence"]).is_dir())
+
 
 if __name__ == "__main__":
     unittest.main()

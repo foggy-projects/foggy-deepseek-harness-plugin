@@ -2513,6 +2513,50 @@ def nested_data_objects(payload: dict) -> list[dict]:
     return objects
 
 
+def runtime_warnings(payload: dict, stage: str) -> list[dict]:
+    """Collect Runtime warnings without interpreting or inventing remediation."""
+    warnings: list[dict] = []
+    seen: set[str] = set()
+    for item in nested_data_objects(payload):
+        raw = item.get("warnings")
+        if raw is None:
+            continue
+        values = raw if isinstance(raw, list) else [raw]
+        for value in values:
+            warning = dict(value) if isinstance(value, dict) else {"message": str(value)}
+            fingerprint = json.dumps(warning, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            if fingerprint in seen:
+                continue
+            seen.add(fingerprint)
+            warning["stages"] = [stage]
+            warnings.append(warning)
+    return warnings
+
+
+def merge_runtime_warnings(*collections: list[dict]) -> list[dict]:
+    """Deduplicate the same warning while retaining every stage that emitted it."""
+    merged: list[dict] = []
+    indexes: dict[str, int] = {}
+    for collection in collections:
+        for value in collection:
+            warning = dict(value)
+            stages = warning.pop("stages", [])
+            fingerprint = json.dumps(warning, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            if fingerprint not in indexes:
+                warning["stages"] = []
+                indexes[fingerprint] = len(merged)
+                merged.append(warning)
+            target = merged[indexes[fingerprint]]["stages"]
+            for stage in stages:
+                if stage not in target:
+                    target.append(stage)
+    return merged
+
+
+def runtime_warning_codes(warnings: list[dict]) -> list[str]:
+    return sorted({str(item["code"]) for item in warnings if item.get("code")})
+
+
 def response_field_count(payload: dict) -> int | None:
     for item in nested_data_objects(payload):
         fields = item.get("fields")
@@ -2563,8 +2607,18 @@ def semantic_verify_command(args: argparse.Namespace) -> dict:
         ["query", "validate", query_model, "--payload", str(payload_path)], "query validate", timeout=90,
     )
     atomic_json(evidence_dir / "query-validate.json", validated)
+    validation_warnings = runtime_warnings(validated, "query-validate")
+    validation_warning_codes = runtime_warning_codes(validation_warnings)
     if not args.execute:
-        mark_step(state, "semanticVerified", "waiting-for-query-execution", queryModel=query_model, queryValidated=True)
+        mark_step(
+            state,
+            "semanticVerified",
+            "waiting-for-query-execution",
+            queryModel=query_model,
+            queryValidated=True,
+            warningCount=len(validation_warnings),
+            warningCodes=validation_warning_codes,
+        )
         state.setdefault("artifacts", {})["semanticVerifyEvidence"] = str(evidence_dir)
         path = write_onboarding_state(data_root, state)
         return {
@@ -2575,6 +2629,9 @@ def semantic_verify_command(args: argparse.Namespace) -> dict:
             "queryModel": query_model,
             "queryValidated": True,
             "queryExecuted": False,
+            "warningCount": len(validation_warnings),
+            "warningCodes": validation_warning_codes,
+            "warnings": validation_warnings,
             "evidenceDir": str(evidence_dir),
             "statePath": str(path),
             "next": "rerun semantic-verify with --execute after approving the bounded business-data query",
@@ -2585,6 +2642,9 @@ def semantic_verify_command(args: argparse.Namespace) -> dict:
         ["query", "execute", query_model, "--payload", str(payload_path)], "query execute", timeout=120,
     )
     atomic_json(evidence_dir / "query-execute.json", executed)
+    execution_warnings = runtime_warnings(executed, "query-execute")
+    warnings = merge_runtime_warnings(validation_warnings, execution_warnings)
+    warning_codes = runtime_warning_codes(warnings)
     row_count = response_row_count(executed)
     mark_step(
         state,
@@ -2596,6 +2656,9 @@ def semantic_verify_command(args: argparse.Namespace) -> dict:
         rowCount=row_count,
         queryPayloadDigest=sha256(payload_path),
         projectRoot=str(project_root),
+        warningCount=len(warnings),
+        warningCodes=warning_codes,
+        warningEvidence=str(evidence_dir),
     )
     workspace_verifications = state.setdefault("workspaceVerifications", [])
     workspace_verifications[:] = [
@@ -2607,6 +2670,9 @@ def semantic_verify_command(args: argparse.Namespace) -> dict:
         "queryModel": query_model,
         "queryPayloadDigest": sha256(payload_path),
         "rowCount": row_count,
+        "warningCount": len(warnings),
+        "warningCodes": warning_codes,
+        "warningEvidence": str(evidence_dir),
         "verifiedAt": now_utc(),
     })
     state.setdefault("artifacts", {})["semanticVerifyEvidence"] = str(evidence_dir)
@@ -2620,6 +2686,9 @@ def semantic_verify_command(args: argparse.Namespace) -> dict:
         "queryValidated": True,
         "queryExecuted": True,
         "rowCount": row_count,
+        "warningCount": len(warnings),
+        "warningCodes": warning_codes,
+        "warnings": warnings,
         "evidenceDir": str(evidence_dir),
         "statePath": str(path),
         "next": "onboarding complete; begin analysis with described field names",
@@ -3163,6 +3232,9 @@ def semantic_run_command(args: argparse.Namespace) -> dict:
             "queryValidated": True,
             "queryExecuted": True,
             "rowCount": verified_step.get("rowCount"),
+            "warningCount": verified_step.get("warningCount", 0),
+            "warningCodes": verified_step.get("warningCodes", []),
+            "warningEvidence": verified_step.get("warningEvidence"),
             "evidenceDir": str(evidence_dir),
             "evidenceFiles": files,
             "productionReady": False,
@@ -3185,6 +3257,9 @@ def semantic_run_command(args: argparse.Namespace) -> dict:
             "phaseStatus": "awaiting-query-execution-approval",
             "queryValidated": True,
             "queryExecuted": False,
+            "warningCount": query_validated.get("warningCount", 0),
+            "warningCodes": query_validated.get("warningCodes", []),
+            "warnings": query_validated.get("warnings", []),
             "evidenceDir": str(evidence_dir),
             "evidenceFiles": files,
             "next": "rerun with all three approval flags after bounded query execution is approved",
@@ -3216,6 +3291,9 @@ def semantic_run_command(args: argparse.Namespace) -> dict:
         "queryValidated": executed["queryValidated"],
         "queryExecuted": executed["queryExecuted"],
         "rowCount": executed["rowCount"],
+        "warningCount": executed.get("warningCount", 0),
+        "warningCodes": executed.get("warningCodes", []),
+        "warnings": executed.get("warnings", []),
         "evidenceDir": str(evidence_dir),
         "evidenceFiles": files,
         "productionReady": False,

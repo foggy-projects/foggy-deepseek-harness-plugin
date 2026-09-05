@@ -59,6 +59,11 @@ are authoritative; do not copy the Skill into the current workspace.
 6. Iterate through model validation, Bundle registration/update, model refresh/describe, query
    validation, and bounded query execution. Development publication means making the local model
    directory effective in this local Runtime; it is not a production release.
+   A successful response may still contain Runtime `warnings`. Preserve and report their stable facts
+   (`code`, `path`, `action`, `semanticImpact`, allowed properties, and normalized request fragments)
+   instead of treating success as proof that every requested option took effect. Free-text advice is
+   optional. When a warning indicates possible semantic drift, use `models describe` to prepare a
+   corrected payload if the user's intent can be preserved; otherwise disclose the limitation.
 7. When the model works, recommend committing the model directory to the user's own Git repository.
    Do not initialize a repository, commit, push, or create a remote unless the user requests it.
 
@@ -123,4 +128,5 @@ explicitly requests removal.
 
 Report the Runtime URL, namespace, datasource name, model directory, Bundle and QueryModel names,
 validation/query status, and useful evidence paths. Never include the password or business row values
-unless the user specifically asks for those values.
+unless the user specifically asks for those values. Include Runtime warning count/codes and the
+warning evidence path when validation or execution completed with warnings.
