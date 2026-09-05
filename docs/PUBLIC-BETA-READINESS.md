@@ -1,10 +1,10 @@
-# Public beta readiness: 0.4.0-beta.17
+# Public beta readiness: 0.4.0-beta.18
 
 Assessment date: 2026-09-05
 
 ## Verdict
 
-`0.4.0-beta.17` is suitable for a scoped public beta on Windows 10/11 x64 and
+`0.4.0-beta.18` is suitable for a scoped public beta on Windows 10/11 x64 and
 Linux/WSL2 x64. It is not a general-availability release.
 
 The plugin package stays small and downloads large components only during
@@ -31,7 +31,7 @@ system PATH, registry, or a user's existing Python installation.
   Runtime. The password is excluded from onboarding state and evidence, and
   datasource setup does not trigger Runtime restart. Opaque profiles remain an
   optional advanced path.
-- A real Launcher 0.1.18 smoke on Java 17 accepted a synthetic inline-password
+- A real Launcher 0.1.20 smoke on Java 17 accepted a synthetic inline-password
   datasource through the public Runtime API while retaining the same Java PID.
   The isolated registry confirmed the documented local-development plaintext
   persistence boundary; the test datasource was then removed and the temporary
@@ -41,8 +41,8 @@ system PATH, registry, or a user's existing Python installation.
   PID, while the persisted onboarding state and command evidence contained no
   copy of the synthetic password.
 - The package and settings contract report Python 3.12.13 as `Foggy private`,
-  CLI 0.1.23, Launcher 0.1.18, analysis Skill 0.1.17, and onboarding Skill
-  0.4.0-beta.17; the same component display was accepted in the preceding
+  CLI 0.1.23, Launcher 0.1.20, analysis Skill 0.1.17, and onboarding Skill
+  0.4.0-beta.18; the same component display was accepted in the preceding
   native Windows beta run.
 - Runtime startup now reports the current phase, elapsed/timeout seconds, and a
   bounded progress value. A real Windows launch with Temurin 17 reached readiness
@@ -67,7 +67,7 @@ system PATH, registry, or a user's existing Python installation.
   new datasource tests cover secret-free persisted state, direct Runtime API
   submission, CLI bypass for inline development credentials, stable inline
   credential resumption, bounded transient connection retry, and output redaction.
-- A real Java 17 / Launcher 0.1.18 regression resumed the same completed inline
+- A real Java 17 / Launcher 0.1.20 regression resumed the same completed inline
   datasource composite twice, retained the Runtime PID, and emitted a complete
   `01` through `06` workspace evidence sequence without falling back to granular
   commands.

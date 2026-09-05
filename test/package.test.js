@@ -22,7 +22,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.0-beta.17')
+  assert.equal(pkg.version, '0.4.0-beta.18')
   assert.equal(pkg.engines.node, '^22.19.0 || >=24.0.0')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
@@ -49,13 +49,16 @@ test('documents the pnpm workspace-root install required by DSH 0.1.2 rc.1', asy
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.0-beta.17')
+  assert.equal(versions.packageVersion, '0.4.0-beta.18')
   assert.equal(versions.components.deepseekHarness.version, '0.1.2-rc.1')
   assert.equal(versions.components.python.version, '3.12.13')
   assert.equal(versions.components.cli.version, '0.1.23')
-  assert.equal(versions.components.launcher.version, '0.1.18')
+  assert.equal(versions.components.launcher.version, '0.1.20')
   assert.equal(versions.defaults.port, 18166)
   assert.ok(versions.components.launcher.assets.every((asset) => asset.url && asset.sha256))
+  const launcherJar = versions.components.launcher.assets.find((asset) => asset.file === 'foggy-runtime-launcher-0.1.20.jar')
+  assert.equal(launcherJar.sha256, '5f7742ba2875dcfd8f00deb4a8aaa43147d3fce2315e907e6ce9da4e25eae4b5')
+  assert.ok(versions.components.launcher.assets.every((asset) => asset.url.includes('/foggy-runtime-launcher-v0.1.20/')))
 })
 
 test('persists one stable validated Runtime port in the plugin data root', async () => {
@@ -370,10 +373,14 @@ test('exposes public-beta recovery, diagnostics, and onboarding progress control
   assert.match(gateway, /migrateProfiles/)
   assert.match(gateway, /foggy-deepseek-diagnostics\/v1/)
   assert.match(client, /onboardingPanel/)
+  assert.match(client, /queryWarningTitle/)
+  assert.match(client, /profile\.warningCount > 0/)
   assert.match(client, /profileMigrationPending/)
   assert.match(onboarding, /profile-migration-status/)
   assert.match(onboarding, /already-running-verified/)
   assert.match(onboarding, /workspaceBindings/)
+  assert.match(onboarding, /queryInputWarnings/)
+  assert.match(onboarding, /warningKind/)
   assert.match(remoteDescriptor, /descriptor\('repairPython'\)/)
   assert.match(remoteDescriptor, /descriptor\('saveRuntimeSettings'/)
 })

@@ -114,10 +114,13 @@ query, and executes it. It never means production publication.
 The composite result keeps `success=true` when the Runtime safely continues with warnings and exposes
 `warningCount`, `warningCodes`, and `warnings` to the Agent. The full Runtime responses remain in
 `query-validate.json` and `query-execute.json`. Read the structured warning facts rather than relying
-on a free-text `suggestedAction`: compare the warning path/action/semantic impact with the described
+on free-text remediation alone: compare `path`, `suggestedNextAction`, `safeToAutoRepair`,
+`normalizedFragment`, `docsRef`, and `details.allowedProperties` with the described
 model, correct and revalidate when an equivalent supported query preserves the user's intent, or
-clearly report the degraded interpretation. Absence of `warnings` remains compatible with older
-Runtime releases.
+clearly report the degraded interpretation. The wrapper accepts Runtime 0.1.20
+`queryInputWarnings` and legacy `warnings` as separate warning kinds. In `IGNORE`, ordinary unknown
+properties continue without `queryInputWarnings`; in `STRICT`, the Runtime rejects the query with the
+complete violations. Protected and governance fields remain fail-closed in every mode.
 
 Use `--watch` only when the user wants the local Runtime to follow model-file edits. Use `--prune` or
 bundle replacement only when the user clearly asks for those changes.

@@ -2514,22 +2514,24 @@ def nested_data_objects(payload: dict) -> list[dict]:
 
 
 def runtime_warnings(payload: dict, stage: str) -> list[dict]:
-    """Collect Runtime warnings without interpreting or inventing remediation."""
+    """Collect structured query-input and legacy warnings without inventing remediation."""
     warnings: list[dict] = []
     seen: set[str] = set()
     for item in nested_data_objects(payload):
-        raw = item.get("warnings")
-        if raw is None:
-            continue
-        values = raw if isinstance(raw, list) else [raw]
-        for value in values:
-            warning = dict(value) if isinstance(value, dict) else {"message": str(value)}
-            fingerprint = json.dumps(warning, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-            if fingerprint in seen:
+        for field, kind in (("queryInputWarnings", "query-input"), ("warnings", "legacy")):
+            raw = item.get(field)
+            if raw is None:
                 continue
-            seen.add(fingerprint)
-            warning["stages"] = [stage]
-            warnings.append(warning)
+            values = raw if isinstance(raw, list) else [raw]
+            for value in values:
+                warning = dict(value) if isinstance(value, dict) else {"message": str(value)}
+                warning["warningKind"] = kind
+                fingerprint = json.dumps(warning, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                if fingerprint in seen:
+                    continue
+                seen.add(fingerprint)
+                warning["stages"] = [stage]
+                warnings.append(warning)
     return warnings
 
 
@@ -2770,6 +2772,9 @@ def onboarding_list_command(args: argparse.Namespace) -> dict:
                 "completedSteps": completed,
                 "totalSteps": len(ordered_steps),
                 "steps": {name: steps.get(name, {"status": "pending"}) for name in ordered_steps},
+                "warningCount": steps.get("semanticVerified", {}).get("warningCount", 0),
+                "warningCodes": steps.get("semanticVerified", {}).get("warningCodes", []),
+                "warningEvidence": steps.get("semanticVerified", {}).get("warningEvidence"),
                 "next": next_onboarding_action(state),
             })
         except OnboardingError as exc:

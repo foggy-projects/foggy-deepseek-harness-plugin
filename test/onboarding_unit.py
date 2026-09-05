@@ -552,13 +552,17 @@ class OnboardingUnitTests(unittest.TestCase):
         warning = {
             "code": "UNKNOWN_QUERY_PROPERTY_IGNORED",
             "path": "$.groupBy[0].grain",
-            "action": "ignored",
-            "semanticImpact": "query_result_may_differ",
+            "message": "Unknown property was ignored",
+            "suggestedNextAction": "Remove the unsupported property",
+            "safeToAutoRepair": True,
+            "normalizedFragment": {"field": "openingTime"},
+            "docsRef": "query-dsl#group-by",
         }
         payload = {
-            "warnings": [warning],
+            "queryInputWarnings": [warning],
             "data": {
-                "warnings": [warning, "legacy warning"],
+                "queryInputWarnings": [warning],
+                "warnings": ["legacy warning"],
             },
         }
 
@@ -566,8 +570,9 @@ class OnboardingUnitTests(unittest.TestCase):
 
         self.assertEqual(len(warnings), 2)
         self.assertEqual(warnings[0]["code"], "UNKNOWN_QUERY_PROPERTY_IGNORED")
+        self.assertEqual(warnings[0]["warningKind"], "query-input")
         self.assertEqual(warnings[0]["stages"], ["query-validate"])
-        self.assertEqual(warnings[1], {"message": "legacy warning", "stages": ["query-validate"]})
+        self.assertEqual(warnings[1], {"message": "legacy warning", "warningKind": "legacy", "stages": ["query-validate"]})
 
     def test_runtime_warning_collection_is_compatible_with_old_success_responses(self):
         payload = {"success": True, "data": {"valid": True}}
@@ -579,10 +584,10 @@ class OnboardingUnitTests(unittest.TestCase):
         warning = {
             "code": "UNKNOWN_QUERY_PROPERTY_IGNORED",
             "path": "$.groupBy[0].grain",
-            "action": "ignored",
+            "normalizedFragment": {"field": "openingTime"},
         }
-        validated = onboarding.runtime_warnings({"warnings": [warning]}, "query-validate")
-        executed = onboarding.runtime_warnings({"data": {"warnings": [warning]}}, "query-execute")
+        validated = onboarding.runtime_warnings({"queryInputWarnings": [warning]}, "query-validate")
+        executed = onboarding.runtime_warnings({"data": {"queryInputWarnings": [warning]}}, "query-execute")
 
         merged = onboarding.merge_runtime_warnings(validated, executed)
 
@@ -601,8 +606,10 @@ class OnboardingUnitTests(unittest.TestCase):
             warning = {
                 "code": "UNKNOWN_QUERY_PROPERTY_IGNORED",
                 "path": "$.groupBy[0].grain",
-                "action": "ignored",
-                "semanticImpact": "query_result_may_differ",
+                "suggestedNextAction": "Remove the unsupported property",
+                "safeToAutoRepair": True,
+                "normalizedFragment": {"field": "openingTime"},
+                "docsRef": "query-dsl#group-by",
             }
             state = {
                 "profile": "demo",
@@ -625,8 +632,8 @@ class OnboardingUnitTests(unittest.TestCase):
             cli_results = [
                 {"success": True, "data": {"models": ["OrderQuery"]}},
                 {"success": True, "data": {"fields": [{"fieldName": "orderDate"}]}},
-                {"success": True, "warnings": [warning], "data": {"valid": True}},
-                {"success": True, "data": {"warnings": [warning], "rows": [{"orderDate": "2026-01"}]}},
+                {"success": True, "queryInputWarnings": [warning], "data": {"valid": True}},
+                {"success": True, "data": {"queryInputWarnings": [warning], "rows": [{"orderDate": "2026-01"}]}},
             ]
             with (
                 patch.object(onboarding, "require_profile", return_value=(state, {}, data_root, {})),
