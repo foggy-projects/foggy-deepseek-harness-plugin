@@ -2760,6 +2760,38 @@ def step_completed(state: dict, name: str) -> bool:
     return state.get("steps", {}).get(name, {}).get("status") == "completed"
 
 
+def reconcile_datasource_checkpoint(
+    state: dict,
+    install_state: dict,
+    data_root: Path,
+    runtime_state: dict,
+) -> dict | None:
+    """Reset dependent checkpoints when the live Runtime lost the datasource."""
+    if not step_completed(state, "datasourceConfigured"):
+        return None
+    connection = state["connection"]
+    listed = cli_json(
+        install_state,
+        runtime_state,
+        connection["namespace"],
+        ["datasources", "list"],
+        "datasources list for checkpoint reconciliation",
+    )
+    if matching_datasource(listed, connection) is not None:
+        return None
+    reset_steps = ("datasourceConfigured", "datasourceVerified", "schemaDiscovered")
+    for name in reset_steps:
+        mark_step(state, name, "pending", reason="runtime-datasource-missing")
+    state.get("artifacts", {}).pop("schemaDiscovery", None)
+    write_onboarding_state(data_root, state)
+    return {
+        "recovered": True,
+        "reason": "runtime-datasource-missing",
+        "resetSteps": list(reset_steps),
+        "dataSource": connection["name"],
+    }
+
+
 def bound_project_roots(state: dict) -> list[Path]:
     values = [state.get("projectRoot"), *state.get("workspaceBindings", [])]
     result: list[Path] = []
@@ -2792,7 +2824,7 @@ def bind_completed_workspace(state: dict, data_root: Path, project_root: Path) -
 
 
 def datasource_run_command(args: argparse.Namespace) -> dict:
-    _install_root, install_state, data_root, _runtime_state = onboarding_context(args, require_runtime=True)
+    _install_root, install_state, data_root, runtime_state = onboarding_context(args, require_runtime=True)
     project_root = normalized(args.project_root or Path.cwd())
     requested_connection = validate_connection(read_json_object(normalized(args.connection_file), "Connection plan"))
     resumable_connection = persisted_connection(requested_connection)
@@ -2834,6 +2866,9 @@ def datasource_run_command(args: argparse.Namespace) -> dict:
         ))
     save_composite_result(evidence_dir, "01-plan.json", plan_result, files)
     state = read_onboarding_state(data_root, profile)
+    checkpoint_recovery = reconcile_datasource_checkpoint(
+        state, install_state, data_root, runtime_state,
+    )
 
     if step_completed(state, "datasourceConfigured"):
         configured = resumed_phase(profile, "datasourceConfigured")
@@ -2844,6 +2879,8 @@ def datasource_run_command(args: argparse.Namespace) -> dict:
             install_root=args.install_root, data_root=args.data_root, profile=profile, apply=False, replace=False,
             runtime_password=requested_connection.get("password"),
         ))
+        if checkpoint_recovery:
+            configure_dry["checkpointRecovery"] = checkpoint_recovery
         save_composite_result(evidence_dir, "02-datasource-dry.json", configure_dry, files)
         if not args.approve_configure:
             return {
@@ -2860,6 +2897,8 @@ def datasource_run_command(args: argparse.Namespace) -> dict:
             install_root=args.install_root, data_root=args.data_root, profile=profile, apply=True, replace=False,
             runtime_password=requested_connection.get("password"),
         ))
+        if checkpoint_recovery:
+            configured["checkpointRecovery"] = checkpoint_recovery
         save_composite_result(evidence_dir, "03-datasource-apply.json", configured, files)
         state = read_onboarding_state(data_root, profile)
 

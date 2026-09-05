@@ -1,7 +1,7 @@
 # Native Windows Beta acceptance
 
 This runbook validates DeepSeek Harness `0.1.2-rc.1` with Foggy plugin
-`0.4.0-beta.16` on a clean 64-bit Windows 10 or Windows 11 machine. Use a local
+`0.4.0-beta.17` on a clean 64-bit Windows 10 or Windows 11 machine. Use a local
 directory that is not synchronized by OneDrive.
 
 ## Prerequisites
@@ -34,6 +34,14 @@ npx --yes --package=@deepseek-ai/dsh@0.1.2-rc.1 --package=pnpm@11.7.0 `
 npx --yes --package=@deepseek-ai/dsh@0.1.2-rc.1 --package=pnpm@11.7.0 dsh web
 ```
 
+If an immediate upgrade reports
+`ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`, use the exact DSH profile directory
+printed by the error, run `npx --yes pnpm@11.7.0 clean --lockfile` there, and
+repeat the same plugin-add command. The failed add normally records the new
+exact package version in that profile's `minimumReleaseAgeExclude`; if the
+error names an older installed Beta, confirm that exact version is listed too.
+Do not disable the policy globally.
+
 Let DSH open the browser automatically. If it does not, copy the complete URL
 printed by `dsh web`, including its `?token=...` query, into the browser. A new
 browser session cannot use the bare `http://127.0.0.1:3080/` URL until that
@@ -54,7 +62,7 @@ Expected component state:
 - CLI 0.1.23;
 - Launcher 0.1.18;
 - analysis Skill 0.1.17;
-- onboarding Skill 0.4.0-beta.16;
+- onboarding Skill 0.4.0-beta.17;
 - Java 17+ available;
 - native DSH Skill registration available.
 

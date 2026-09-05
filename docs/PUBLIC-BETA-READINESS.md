@@ -1,10 +1,10 @@
-# Public beta readiness: 0.4.0-beta.16
+# Public beta readiness: 0.4.0-beta.17
 
 Assessment date: 2026-09-05
 
 ## Verdict
 
-`0.4.0-beta.16` is suitable for a scoped public beta on Windows 10/11 x64 and
+`0.4.0-beta.17` is suitable for a scoped public beta on Windows 10/11 x64 and
 Linux/WSL2 x64. It is not a general-availability release.
 
 The plugin package stays small and downloads large components only during
@@ -42,7 +42,7 @@ system PATH, registry, or a user's existing Python installation.
   copy of the synthetic password.
 - The package and settings contract report Python 3.12.13 as `Foggy private`,
   CLI 0.1.23, Launcher 0.1.18, analysis Skill 0.1.17, and onboarding Skill
-  0.4.0-beta.16; the same component display was accepted in the preceding
+  0.4.0-beta.17; the same component display was accepted in the preceding
   native Windows beta run.
 - Runtime startup now reports the current phase, elapsed/timeout seconds, and a
   bounded progress value. A real Windows launch with Temurin 17 reached readiness
@@ -63,7 +63,7 @@ system PATH, registry, or a user's existing Python installation.
   downloaded artifacts are not trusted until the complete SHA256 matches.
 - Windows progress writes tolerate transient sharing violations without losing
   the previous valid progress document or leaving temporary files behind.
-- Current automated regression passes 20 Node tests and 23 Python tests. The
+- Current automated regression passes 20 Node tests and 25 Python tests. The
   new datasource tests cover secret-free persisted state, direct Runtime API
   submission, CLI bypass for inline development credentials, stable inline
   credential resumption, bounded transient connection retry, and output redaction.
@@ -71,6 +71,17 @@ system PATH, registry, or a user's existing Python installation.
   datasource composite twice, retained the Runtime PID, and emitted a complete
   `01` through `06` workspace evidence sequence without falling back to granular
   commands.
+- A separate recovery regression completed a SQLite onboarding composite,
+  removed the managed datasource outside the wrapper, and reran the same
+  composite. The wrapper detected the missing live datasource, reset only the
+  three dependent checkpoints, recreated and tested the datasource, rebound the
+  namespace, and rediscovered the selected table successfully.
+- The full release rehearsal converted an inspected 126-column TMS order table
+  into versioned TM/QM source, passed eight development question-bank cases,
+  deployed the exact Git-tagged source to a separate Ubuntu host, published the
+  bundle, and passed the same question bank before and after a Runtime restart.
+  The remote Runtime retained its datasource binding, active bundle, query
+  model, and 11-tool MCP surface after restart.
 
 ## Beta boundaries
 

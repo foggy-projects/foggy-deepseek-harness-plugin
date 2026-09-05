@@ -72,7 +72,10 @@ tables list -> bounded schema inspection
 ```
 
 It does not stop or restart Runtime. Repeated calls reuse completed checkpoints when the public
-connection contract is unchanged. Inline password values are excluded from the comparison.
+connection contract is unchanged. Before reusing a datasource checkpoint, the wrapper verifies that
+the named datasource still exists with the expected public type in the live Runtime. If it was
+removed outside the wrapper, datasource configuration, verification, and schema discovery resume
+automatically from the first affected step. Inline password values are excluded from the comparison.
 Transient connection-pool readiness timeouts are retried a small, bounded number of times; invalid
 credentials, invalid URLs, and other configuration errors fail immediately.
 

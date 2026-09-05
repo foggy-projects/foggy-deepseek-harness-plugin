@@ -14,7 +14,7 @@ modify `PATH`, or register Python globally. Advanced users may explicitly set
 ## Local beta installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.16.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-beta.17.tgz
 ```
 
 Restart `dsh web`, use the browser it opens (or the complete printed URL,
@@ -26,6 +26,24 @@ After npm beta publication, the corresponding one-line install is:
 ```powershell
 dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@beta
 ```
+
+DeepSeek Harness 0.1.2-rc.1 applies pnpm's minimum-release-age policy to its
+profile lockfile. An upgrade performed shortly after publication can therefore
+fail while naming either the new plugin or the previously installed Beta. This
+is a DSH profile-policy failure, not a damaged Foggy package. Use the exact
+profile directory printed in the error and rebuild its lockfile, then rerun the
+same `dsh plugin add` command:
+
+```powershell
+Set-Location "<the DSH profile directory printed in the error>"
+npx --yes pnpm@11.7.0 clean --lockfile
+```
+
+The failed add normally records the requested exact version under
+`minimumReleaseAgeExclude` before returning. If the error repeats, confirm that
+both the installed and requested exact Foggy versions named by the error appear
+under that key in the profile's `pnpm-workspace.yaml`; do not disable the policy
+globally.
 
 For development, `FOGGY_ASSET_CACHE_DIRS` can contain platform-delimited verified
 asset-cache directories. It is not required for a normal install.
@@ -50,7 +68,10 @@ Opaque CLI profiles remain available for users who prefer them and default to
 the private persistent `<dataRoot>/cli-profiles` directory, but they are not a
 prerequisite for ordinary development. Composite onboarding commands are
 idempotent: unchanged completed phases are resumed rather than re-adding a
-datasource or re-registering a local Bundle. Settings detects legacy temporary
+datasource or re-registering a local Bundle. A resumed datasource checkpoint is
+also reconciled against the live Runtime; if the datasource was removed outside
+the wrapper, only datasource configuration, verification, and schema discovery
+are resumed. Settings detects legacy temporary
 profiles and offers an explicit, validated migration into the persistent store.
 
 Private Python, CLI, Launcher, the analysis Skill, install state, and Runtime

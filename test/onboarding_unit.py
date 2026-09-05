@@ -491,6 +491,47 @@ class OnboardingUnitTests(unittest.TestCase):
             self.assertTrue(onboarding.project_root_is_bound(state, secondary.resolve()))
             self.assertFalse(onboarding.bind_completed_workspace(state, data_root.resolve(), secondary.resolve()))
 
+    def test_live_datasource_keeps_completed_checkpoint(self):
+        state = {
+            "connection": {"name": "tms-mysql", "type": "mysql", "namespace": "tms"},
+            "steps": {"datasourceConfigured": {"status": "completed"}},
+        }
+        listed = {"data": {"datasources": [{"name": "tms-mysql", "type": "mysql"}]}}
+        with (
+            patch.object(onboarding, "cli_json", return_value=listed),
+            patch.object(onboarding, "write_onboarding_state") as write_state,
+        ):
+            result = onboarding.reconcile_datasource_checkpoint(state, {}, Path("state"), {})
+        self.assertIsNone(result)
+        self.assertEqual(state["steps"]["datasourceConfigured"]["status"], "completed")
+        write_state.assert_not_called()
+
+    def test_missing_live_datasource_resets_dependent_checkpoints(self):
+        state = {
+            "connection": {"name": "tms-mysql", "type": "mysql", "namespace": "tms"},
+            "steps": {
+                "datasourceConfigured": {"status": "completed"},
+                "datasourceVerified": {"status": "completed"},
+                "schemaDiscovered": {"status": "completed"},
+                "semanticPublished": {"status": "completed"},
+            },
+            "artifacts": {"schemaDiscovery": "stale-schema.json", "semanticPlan": "plan.json"},
+        }
+        with (
+            patch.object(onboarding, "cli_json", return_value={"data": {"datasources": []}}),
+            patch.object(onboarding, "write_onboarding_state") as write_state,
+        ):
+            result = onboarding.reconcile_datasource_checkpoint(state, {}, Path("state"), {})
+        self.assertTrue(result["recovered"])
+        self.assertEqual(result["reason"], "runtime-datasource-missing")
+        for name in ("datasourceConfigured", "datasourceVerified", "schemaDiscovered"):
+            self.assertEqual(state["steps"][name]["status"], "pending")
+            self.assertEqual(state["steps"][name]["reason"], "runtime-datasource-missing")
+        self.assertEqual(state["steps"]["semanticPublished"]["status"], "completed")
+        self.assertNotIn("schemaDiscovery", state["artifacts"])
+        self.assertEqual(state["artifacts"]["semanticPlan"], "plan.json")
+        write_state.assert_called_once_with(Path("state"), state)
+
     def test_query_verification_is_scoped_to_the_workspace(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
