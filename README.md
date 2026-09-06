@@ -3,7 +3,9 @@
 This package is the lightweight DeepSeek Harness Bundle for Foggy's Java data
 analysis engine. Installing the Bundle adds a native Foggy tab under **Settings
 → Plugins**. The private Python runtime, Launcher, and isolated CLI environment
-are downloaded only when the user selects **Initialize Foggy**.
+are downloaded only when the user selects **Initialize and start** (or the
+equivalent component action). Existing installations are not silently changed
+when the plugin package is upgraded.
 
 DeepSeek Harness uses a system Node.js (`^22.19.0 || >=24.0.0`) and Foggy's Java
 Launcher uses a system Java 17+. Foggy manages its own pinned Python 3.12 runtime
@@ -14,7 +16,7 @@ modify `PATH`, or register Python globally. Advanced users may explicitly set
 ## Local beta installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-rc.2.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-rc.3.tgz
 ```
 
 Restart `dsh web`, use the browser it opens (or the complete printed URL,
@@ -26,6 +28,13 @@ After npm beta publication, the corresponding one-line install is:
 ```powershell
 dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@beta
 ```
+
+After updating the plugin package, open **Settings → Plugins → Foggy Data
+Analysis** and use **Update components** (or **Update and start**) to download
+the pinned CLI, Launcher, and Skills. The settings page shows current and target
+versions. Updates are blocked while Runtime is running so the active Java
+process and the next-launcher state cannot diverge. Component-specific repair
+actions remain available under **Advanced repair**.
 
 DeepSeek Harness 0.1.2-rc.1 applies pnpm's minimum-release-age policy to its
 profile lockfile. An upgrade performed shortly after publication can therefore
