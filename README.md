@@ -117,6 +117,15 @@ Native Windows acceptance instructions are in
 [`docs/WINDOWS-BETA-ACCEPTANCE.md`](./docs/WINDOWS-BETA-ACCEPTANCE.md); database
 credentials intentionally remain outside the public repository.
 
+## Community discovery
+
+DeepSeek Harness does not currently publish a first-party plugin marketplace.
+For discoverability, this repository is intended to carry the GitHub
+[`dsh-plugin`](https://github.com/topics/dsh-plugin) topic. Independent community
+directories and their submission rules are tracked in
+[`docs/COMMUNITY-MARKETPLACES.md`](./docs/COMMUNITY-MARKETPLACES.md); inclusion in
+any directory is community curation, not an endorsement by DeepSeek or Foggy.
+
 ## Linux and WSL2 experience
 
 Ubuntu and WSL2 users can use the checked-in preflighted installer under

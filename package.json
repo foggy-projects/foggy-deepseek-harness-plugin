@@ -2,6 +2,23 @@
   "name": "@foggy-projects/deepseek-harness-plugin",
   "version": "0.4.0-rc.3",
   "description": "Foggy Java data analysis engine integration for DeepSeek Harness",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "foggy",
+    "data-analysis",
+    "semantic-layer",
+    "runtime"
+  ],
+  "homepage": "https://github.com/foggy-projects/foggy-deepseek-harness-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/foggy-projects/foggy-deepseek-harness-plugin/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/foggy-projects/foggy-deepseek-harness-plugin.git"
+  },
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
@@ -22,6 +39,7 @@
     "docs/PUBLIC-BETA-READINESS.md",
     "docs/RELEASE-CANDIDATE-0.4.0-RC.2.md",
     "docs/RELEASE-CANDIDATE-0.4.0-RC.3.md",
+    "docs/COMMUNITY-MARKETPLACES.md",
     "docs/WINDOWS-BETA-ACCEPTANCE.md",
     "THIRD-PARTY-RUNTIME-NOTICES.md",
     "README.md"

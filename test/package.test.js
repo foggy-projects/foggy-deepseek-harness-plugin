@@ -26,6 +26,9 @@ test('declares a standard DeepSeek Harness bundle and web client', async () => {
   assert.equal(pkg.engines.node, '^22.19.0 || >=24.0.0')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
+  assert.ok(pkg.keywords.includes('dsh-plugin'))
+  assert.equal(pkg.repository.url, 'git+https://github.com/foggy-projects/foggy-deepseek-harness-plugin.git')
+  assert.equal(pkg.homepage, 'https://github.com/foggy-projects/foggy-deepseek-harness-plugin#readme')
   assert.equal(pkg.exports['./client'], './lib/client.js')
   assert.equal(pkg.exports['./typert'], './lib/typert.js')
   for (const [name, range] of Object.entries(pkg.peerDependencies)) {
@@ -407,4 +410,14 @@ test('exposes one-click lifecycle actions, update visibility, and public resourc
   assert.match(client, /github\.com\/foggy-projects\/foggy-deepseek-harness-plugin/)
   assert.match(remoteDescriptor, /descriptor\('initializeAndStart'\)/)
   assert.match(remoteDescriptor, /descriptor\('updateComponents'\)/)
+})
+
+test('documents third-party marketplace discovery without claiming official endorsement', async () => {
+  const readme = await readFile(join(root, 'README.md'), 'utf8')
+  const markets = await readFile(join(root, 'docs', 'COMMUNITY-MARKETPLACES.md'), 'utf8')
+  assert.match(readme, /does not currently publish a first-party plugin marketplace/i)
+  assert.match(markets, /awesome-dsh-plugin/)
+  assert.match(markets, /dsh-market/)
+  assert.match(markets, /dshplugin\.app/)
+  assert.match(markets, /第三方市场/)
 })
