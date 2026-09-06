@@ -22,7 +22,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.0-rc.1')
+  assert.equal(pkg.version, '0.4.0-rc.2')
   assert.equal(pkg.engines.node, '^22.19.0 || >=24.0.0')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
@@ -49,16 +49,20 @@ test('documents the pnpm workspace-root install required by DSH 0.1.2 rc.1', asy
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.0-rc.1')
+  assert.equal(versions.packageVersion, '0.4.0-rc.2')
   assert.equal(versions.components.deepseekHarness.version, '0.1.2-rc.1')
   assert.equal(versions.components.python.version, '3.12.13')
   assert.equal(versions.components.cli.version, '0.1.23')
-  assert.equal(versions.components.launcher.version, '0.1.20')
+  assert.equal(versions.components.launcher.version, '0.1.21')
+  assert.equal(versions.components.analysisSkill.version, '0.1.18')
+  assert.equal(versions.components.semanticQuerySkill.version, '0.1.18')
   assert.equal(versions.defaults.port, 18166)
   assert.ok(versions.components.launcher.assets.every((asset) => asset.url && asset.sha256))
-  const launcherJar = versions.components.launcher.assets.find((asset) => asset.file === 'foggy-runtime-launcher-0.1.20.jar')
-  assert.equal(launcherJar.sha256, '5f7742ba2875dcfd8f00deb4a8aaa43147d3fce2315e907e6ce9da4e25eae4b5')
-  assert.ok(versions.components.launcher.assets.every((asset) => asset.url.includes('/foggy-runtime-launcher-v0.1.20/')))
+  const launcherJar = versions.components.launcher.assets.find((asset) => asset.file === 'foggy-runtime-launcher-0.1.21.jar')
+  assert.equal(launcherJar.sha256, '0b5002e40633f4606b0f5d3adbcd734ad4a11d8204decab162bb53b6ab28b3b3')
+  assert.ok(versions.components.launcher.assets.every((asset) => asset.url.includes('/foggy-runtime-launcher-v0.1.21/')))
+  assert.ok(versions.components.analysisSkill.assets.every((asset) => asset.url.includes('/releases/download/v0.1.18/')))
+  assert.ok(versions.components.semanticQuerySkill.assets.every((asset) => asset.url.includes('/releases/download/v0.1.18/')))
 })
 
 test('persists one stable validated Runtime port in the plugin data root', async () => {
@@ -338,7 +342,7 @@ test('exposes persistent initialization and Runtime startup progress to the web 
   assert.match(gateway, /'--port', String\(settings\.port\)/)
 })
 
-test('registers Skills natively and keeps managed analysis assets global', async () => {
+test('registers Skills natively and keeps managed analysis/query assets global', async () => {
   const gateway = await readFile(join(root, 'lib', 'index.js'), 'utf8')
   const provider = await readFile(join(root, 'lib', 'skill-provider.js'), 'utf8')
   const client = await readFile(join(root, 'lib', 'client.js'), 'utf8')
@@ -350,6 +354,7 @@ test('registers Skills natively and keeps managed analysis assets global', async
   assert.match(provider, /BUNDLED_SKILL_RANK/)
   assert.match(provider, /foggy-managed-skills/)
   assert.match(provider, /foggy-ai-analysis/)
+  assert.match(provider, /foggy-semantic-query/)
   assert.match(client, /skillRegistry/)
   assert.match(client, /status\.state !== 'not-installed'/)
   assert.match(onboarding, /MANAGED_SKILL_SCHEMA = "foggy-managed-skill\/v1"/)

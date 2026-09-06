@@ -65,7 +65,7 @@ are authoritative; do not copy the Skill into the current workspace.
    instead of treating success as proof that every requested option took effect. Free-text advice is
    optional. When a warning indicates possible semantic drift, use `models describe` to prepare a
    corrected payload if the user's intent can be preserved; otherwise disclose the limitation.
-   Runtime 0.1.20 defaults unknown ordinary Query DSL properties to `WARN`; `IGNORE` continues without
+   Runtime 0.1.21 defaults unknown ordinary Query DSL properties to `WARN`; `IGNORE` continues without
    `queryInputWarnings`, while `STRICT` rejects the request with the complete structured violations.
    Never reinterpret a protected or governance-field failure as an ignorable warning.
 7. When the model works, recommend committing the model directory to the user's own Git repository.

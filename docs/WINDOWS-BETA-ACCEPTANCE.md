@@ -1,7 +1,7 @@
 # Native Windows Beta acceptance
 
 This runbook validates DeepSeek Harness `0.1.2-rc.1` with Foggy plugin
-`0.4.0-rc.1` on a clean 64-bit Windows 10 or Windows 11 machine. Use a local
+`0.4.0-rc.2` on a clean 64-bit Windows 10 or Windows 11 machine. Use a local
 directory that is not synchronized by OneDrive.
 
 ## Prerequisites
@@ -60,9 +60,9 @@ Expected component state:
 
 - Python 3.12.13, source `Foggy private`;
 - CLI 0.1.23;
-- Launcher 0.1.20;
-- analysis Skill 0.1.17;
-- onboarding Skill 0.4.0-rc.1;
+- Launcher 0.1.21;
+- analysis/query Skills 0.1.18;
+- onboarding Skill 0.4.0-rc.2;
 - Java 17+ available;
 - native DSH Skill registration available.
 

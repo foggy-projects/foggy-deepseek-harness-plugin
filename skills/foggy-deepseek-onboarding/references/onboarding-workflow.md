@@ -117,7 +117,7 @@ The composite result keeps `success=true` when the Runtime safely continues with
 on free-text remediation alone: compare `path`, `suggestedNextAction`, `safeToAutoRepair`,
 `normalizedFragment`, `docsRef`, and `details.allowedProperties` with the described
 model, correct and revalidate when an equivalent supported query preserves the user's intent, or
-clearly report the degraded interpretation. The wrapper accepts Runtime 0.1.20
+clearly report the degraded interpretation. The wrapper accepts Runtime 0.1.21
 `queryInputWarnings` and legacy `warnings` as separate warning kinds. In `IGNORE`, ordinary unknown
 properties continue without `queryInputWarnings`; in `STRICT`, the Runtime rejects the query with the
 complete violations. Protected and governance fields remain fail-closed in every mode.

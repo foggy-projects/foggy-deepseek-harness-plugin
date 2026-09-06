@@ -1,6 +1,6 @@
 {
   "name": "@foggy-projects/deepseek-harness-plugin",
-  "version": "0.4.0-rc.1",
+  "version": "0.4.0-rc.2",
   "description": "Foggy Java data analysis engine integration for DeepSeek Harness",
   "type": "module",
   "main": "./lib/index.js",
@@ -20,7 +20,7 @@
     "cordis.patch.yml",
     "experience/linux/**",
     "docs/PUBLIC-BETA-READINESS.md",
-    "docs/RELEASE-CANDIDATE-0.4.0-RC.1.md",
+    "docs/RELEASE-CANDIDATE-0.4.0-RC.2.md",
     "docs/WINDOWS-BETA-ACCEPTANCE.md",
     "THIRD-PARTY-RUNTIME-NOTICES.md",
     "README.md"

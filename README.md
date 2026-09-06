@@ -14,7 +14,7 @@ modify `PATH`, or register Python globally. Advanced users may explicitly set
 ## Local beta installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-rc.1.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.0-rc.2.tgz
 ```
 
 Restart `dsh web`, use the browser it opens (or the complete printed URL,

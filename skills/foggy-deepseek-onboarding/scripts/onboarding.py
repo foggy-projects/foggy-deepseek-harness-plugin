@@ -1168,22 +1168,26 @@ def safe_extract(zip_path: Path, destination: Path) -> None:
         archive.extractall(destination)
 
 
-def install_analysis_skill(
+def install_managed_skill(
     zip_path: Path,
     install_root: Path,
     version: str,
     expected_hash: str,
     package_version: str,
     replace: bool,
+    *,
+    skill_name: str,
+    kind: str,
+    display_name: str,
 ) -> dict:
     skills_root = install_root / "skills"
-    destination = skills_root / "foggy-ai-analysis"
+    destination = skills_root / skill_name
     with tempfile.TemporaryDirectory(prefix="foggy-skill-") as temporary:
         extract_root = Path(temporary)
         safe_extract(zip_path, extract_root)
         candidates = list(extract_root.rglob("SKILL.md"))
         if len(candidates) != 1:
-            raise OnboardingError(f"Expected exactly one SKILL.md in analysis Skill archive, found {len(candidates)}")
+            raise OnboardingError(f"Expected exactly one SKILL.md in {display_name} archive, found {len(candidates)}")
         source = candidates[0].parent
         source_digest = skill_tree_digest(source)
         if destination.exists():
@@ -1199,7 +1203,7 @@ def install_analysis_skill(
             if marker_matches:
                 marker = write_skill_marker(
                     destination,
-                    kind="analysis",
+                    kind=kind,
                     package_version=package_version,
                     component_version=version,
                     source_digest=source_digest,
@@ -1207,13 +1211,13 @@ def install_analysis_skill(
                 )
                 return {"path": str(destination), "version": version, "digest": marker["installedDigest"], "managed": True, "action": "kept-matching"}
             if not replace:
-                raise OnboardingError(f"Analysis Skill is missing, modified, or outdated at {destination}; use the plugin Repair action to back it up and restore it")
+                raise OnboardingError(f"{display_name} is missing, modified, or outdated at {destination}; use the plugin Repair action to back it up and restore it")
             backup_skill(destination, install_root / "skill-backups")
         skills_root.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source, destination)
     marker = write_skill_marker(
         destination,
-        kind="analysis",
+        kind=kind,
         package_version=package_version,
         component_version=version,
         source_digest=source_digest,
@@ -1264,7 +1268,7 @@ def install_command(args: argparse.Namespace) -> dict:
         "workspaceMode": "dsh-session-cwd",
         "versions": {name: value.get("version") for name, value in components.items()},
         "repairComponent": repair_component,
-        "operations": ["verify private Python", "install isolated CLI", "verify Launcher assets", "install global analysis Skill", "write install state"],
+        "operations": ["verify private Python", "install isolated CLI", "verify Launcher assets", "install global analysis/query Skills", "write install state"],
         "productionReady": False,
     }
     if args.dry_run:
@@ -1364,32 +1368,41 @@ def install_command(args: argparse.Namespace) -> dict:
         (launcher_dir / "start-foggy-runtime.sh").chmod(0o755)
     progress.update("launcher", 3, "Launcher ready", fraction=1.0)
 
-    analysis_assets = components["analysisSkill"]["assets"]
-    for index, asset in enumerate(analysis_assets):
-        progress.update(
-            "analysis-skill", 4, "Downloading and verifying analysis Skill",
-            fraction=index / len(analysis_assets), current_file=asset["file"],
-            completed_files=index, total_files=len(analysis_assets),
-        )
-        verified.append(materialize(
-            asset, downloads / "skill" / asset["file"], cache_dirs,
-            progress=progress, progress_phase="analysis-skill", progress_step=4,
-            progress_index=index, progress_total=len(analysis_assets),
-            progress_message="Downloading and verifying analysis Skill",
-            replace_corrupt=repair_component == "analysis-skill",
-        ))
-        progress.update(
-            "analysis-skill", 4, "Downloading and verifying analysis Skill",
-            fraction=(index + 1) / len(analysis_assets), current_file=asset["file"],
-            completed_files=index + 1, total_files=len(analysis_assets),
-        )
-    zip_asset = next(item for item in analysis_assets if item["role"] == "zip")
-    progress.update("analysis-skill", 4, "Installing analysis Skill", fraction=0.9, current_file=zip_asset["file"])
-    analysis_skill = install_analysis_skill(
-        downloads / "skill" / zip_asset["file"], install_root, components["analysisSkill"]["version"],
-        zip_asset["sha256"], versions["packageVersion"], args.replace_skill or repair_component == "analysis-skill",
+    installed_skills = {}
+    skill_specs = (
+        ("analysisSkill", "analysis", "foggy-ai-analysis", "Analysis Skill", "analysis-skill"),
+        ("semanticQuerySkill", "semantic-query", "foggy-semantic-query", "Semantic Query Skill", "semantic-query-skill"),
     )
-    progress.update("analysis-skill", 4, "Analysis Skill ready", fraction=1.0)
+    for component_key, state_key, skill_name, display_name, repair_key in skill_specs:
+        skill_assets = components[component_key]["assets"]
+        for index, asset in enumerate(skill_assets):
+            progress.update(
+                repair_key, 4, f"Downloading and verifying {display_name}",
+                fraction=index / len(skill_assets), current_file=asset["file"],
+                completed_files=index, total_files=len(skill_assets),
+            )
+            verified.append(materialize(
+                asset, downloads / "skill" / asset["file"], cache_dirs,
+                progress=progress, progress_phase=repair_key, progress_step=4,
+                progress_index=index, progress_total=len(skill_assets),
+                progress_message=f"Downloading and verifying {display_name}",
+                replace_corrupt=repair_component == repair_key,
+            ))
+            progress.update(
+                repair_key, 4, f"Downloading and verifying {display_name}",
+                fraction=(index + 1) / len(skill_assets), current_file=asset["file"],
+                completed_files=index + 1, total_files=len(skill_assets),
+            )
+        zip_asset = next(item for item in skill_assets if item["role"] == "zip")
+        progress.update(repair_key, 4, f"Installing {display_name}", fraction=0.9, current_file=zip_asset["file"])
+        installed_skills[state_key] = install_managed_skill(
+            downloads / "skill" / zip_asset["file"], install_root, components[component_key]["version"],
+            zip_asset["sha256"], versions["packageVersion"], args.replace_skill or repair_component == repair_key,
+            skill_name=skill_name, kind=state_key, display_name=display_name,
+        )
+        progress.update(repair_key, 4, f"{display_name} ready", fraction=1.0)
+    analysis_skill = installed_skills["analysis"]
+    semantic_query_skill = installed_skills["semantic-query"]
     progress.update("workspace-skills", 5, "Registering native DSH Skills", fraction=0.1)
     onboarding_skill = {
         "path": str(skill_root()),
@@ -1414,7 +1427,7 @@ def install_command(args: argparse.Namespace) -> dict:
         },
         "cli": {"version": cli_component["version"], "command": str(cli_command), "mode": cli_mode},
         "launcher": {"version": components["launcher"]["version"], "path": str(launcher_dir)},
-        "skills": {"onboarding": onboarding_skill, "analysis": analysis_skill},
+        "skills": {"onboarding": onboarding_skill, "analysis": analysis_skill, "semanticQuery": semantic_query_skill},
         "verifiedAssets": verified,
         "securityMode": versions["defaults"]["securityMode"],
         "productionReady": False,
@@ -1433,6 +1446,7 @@ def install_command(args: argparse.Namespace) -> dict:
         "cliVersion": cli_component["version"],
         "launcherVersion": components["launcher"]["version"],
         "analysisSkill": analysis_skill,
+        "semanticQuerySkill": semantic_query_skill,
         "onboardingSkill": onboarding_skill,
         "java": java_probe(),
         "next": "run doctor, then runtime-start",
@@ -3324,8 +3338,10 @@ def doctor_command(args: argparse.Namespace) -> dict:
             launcher_checks.append({"file": asset["file"], "present": path.is_file(), "sha256Valid": path.is_file() and sha256(path) == asset["sha256"]})
     launcher_ok = bool(launcher_checks) and all(item["present"] and item["sha256Valid"] for item in launcher_checks)
     analysis_skill_root = normalized(state.get("skills", {}).get("analysis", {}).get("path") or install_root / "skills" / "foggy-ai-analysis") if state else install_root / "skills" / "foggy-ai-analysis"
+    semantic_query_skill_root = normalized(state.get("skills", {}).get("semanticQuery", {}).get("path") or install_root / "skills" / "foggy-semantic-query") if state else install_root / "skills" / "foggy-semantic-query"
     onboarding_skill_root = skill_root()
     analysis_skill = managed_skill_status(analysis_skill_root, "analysis", versions["components"]["analysisSkill"]["version"])
+    semantic_query_skill = managed_skill_status(semantic_query_skill_root, "semantic-query", versions["components"]["semanticQuerySkill"]["version"])
     onboarding_skill = {
         "path": str(onboarding_skill_root),
         "present": (onboarding_skill_root / "SKILL.md").is_file(),
@@ -3348,6 +3364,7 @@ def doctor_command(args: argparse.Namespace) -> dict:
         "cli": cli_ok,
         "launcher": launcher_ok,
         "analysisSkill": analysis_skill["valid"],
+        "semanticQuerySkill": semantic_query_skill["valid"],
         "onboardingSkill": onboarding_skill["valid"],
     }
     if args.strict_runtime:
@@ -3362,7 +3379,7 @@ def doctor_command(args: argparse.Namespace) -> dict:
         "java": java,
         "cli": cli,
         "launcherAssets": launcher_checks,
-        "skills": {"analysis": analysis_skill, "onboarding": onboarding_skill},
+        "skills": {"analysis": analysis_skill, "semanticQuery": semantic_query_skill, "onboarding": onboarding_skill},
         "workspace": {"path": str(project_root), "mode": "dsh-session-cwd"},
         "runtime": runtime,
         "environmentPresence": {name: bool(os.environ.get(name)) for name in ("DEEPSEEK_API_KEY", "ALIYUN_TOKEN_PLAN_API_KEY", "FOGGY_RUNTIME_API_AUTH_CODE", "FOGGY_RUNTIME_AUTHORIZATION")},
@@ -3380,7 +3397,7 @@ def uninstall_command(args: argparse.Namespace) -> dict:
     if install_root == data_root:
         raise OnboardingError("Install root and data root must be different")
     skills_root = install_root / "skills"
-    skill_targets = [skills_root / "foggy-ai-analysis"]
+    skill_targets = [skills_root / "foggy-ai-analysis", skills_root / "foggy-semantic-query"]
     plan = {"installRoot": str(install_root), "dataRoot": str(data_root), "removeSkills": args.remove_skills, "purgeData": args.purge_data}
     if args.dry_run:
         return {"success": True, "dryRun": True, "plan": plan}
@@ -3415,7 +3432,7 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument("--project-root")
     install.add_argument("--asset-cache-dir", action="append", default=[])
     install.add_argument("--replace-skill", action="store_true")
-    install.add_argument("--repair-component", choices=("cli", "launcher", "analysis-skill"))
+    install.add_argument("--repair-component", choices=("cli", "launcher", "analysis-skill", "semantic-query-skill"))
     install.add_argument("--skip-cli-install", action="store_true")
     install.add_argument("--cli-command")
     install.add_argument("--progress-file")
