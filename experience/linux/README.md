@@ -5,7 +5,7 @@ It has been designed for Ubuntu 22.04/24.04 x86_64 and WSL2.
 
 ## Prerequisites
 
-- Node.js `^22.19.0` or `>=24.0.0`
+- Node.js `>=24.0.0` (the DSH 0.1.5-rc.2 compatibility candidate)
 - Java 17 or newer
 - Git, npm, and `tar`
 - At least 4 GiB free disk space and 2 GiB available memory; 4 GiB memory is recommended
@@ -22,7 +22,7 @@ bash experience/linux/prepare.sh --dry-run
 bash experience/linux/prepare.sh
 ```
 
-The script installs pinned pnpm and DeepSeek Harness versions inside
+The script installs pinned pnpm and DeepSeek Harness 0.1.5-rc.2 inside
 `~/.local/share/foggy-deepseek-harness-experience`, clones and packs the public Foggy Bundle, and
 adds it to a clean DSH web profile. It does not use `sudo`, install operating-system packages, write
 model credentials, initialize Foggy components, or start the web process.
