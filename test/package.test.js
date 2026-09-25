@@ -10,6 +10,7 @@ import { compatible, compatibleNode, versionParts } from '../lib/version.js'
 import { ensurePythonRuntime, managedPythonExecutable, probePythonRuntime, pythonAssetKey, selectPythonAsset } from '../lib/python-runtime.js'
 import { writeJsonAtomic } from '../lib/atomic-json.js'
 import { enrichRuntimeStartFailure, readDiagnosticLogTail, sanitizeDiagnosticText } from '../lib/diagnostics.js'
+import { descriptors } from '../lib/remote-descriptor.js'
 import {
   DEFAULT_RUNTIME_PORT,
   normalizeRuntimePort,
@@ -22,7 +23,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.1-rc.1')
+  assert.equal(pkg.version, '0.4.2-rc.1')
   assert.equal(pkg.engines.node, '>=24.0.0')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
@@ -34,7 +35,7 @@ test('declares a standard DeepSeek Harness bundle and web client', async () => {
   assert.equal(pkg.exports['./client'], './lib/client.js')
   assert.equal(pkg.exports['./typert'], './lib/typert.js')
   for (const [name, range] of Object.entries(pkg.peerDependencies)) {
-    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '^0.1.5-rc.2', name)
+    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '^0.1.7-rc.2', name)
   }
 })
 
@@ -44,18 +45,19 @@ test('bundle patch mounts the dual-face Foggy package', async () => {
   assert.match(patch, /@foggy-projects\/deepseek-harness-plugin/)
 })
 
-test('documents the pnpm workspace-root install required by DSH 0.1.5 rc.2', async () => {
+test('documents the pnpm workspace-root install required by DSH 0.1.7 rc.2', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
   const readme = await readFile(join(root, 'README.md'), 'utf8')
   assert.match(readme, /dsh plugin --profile web add --workspace-root/)
   assert.ok(readme.includes(`${pkg.version}.tgz`))
   assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@beta/)
+  assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@dsh017/)
 })
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.1-rc.1')
-  assert.equal(versions.components.deepseekHarness.version, '0.1.5-rc.2')
+  assert.equal(versions.packageVersion, '0.4.2-rc.1')
+  assert.equal(versions.components.deepseekHarness.version, '0.1.7-rc.2')
   assert.equal(versions.components.deepseekHarness.minimumNodeVersion, '24.0.0')
   assert.equal(versions.components.python.version, '3.12.13')
   assert.equal(versions.components.cli.version, '0.1.23')
@@ -69,6 +71,21 @@ test('ships the pinned onboarding manifest without the Java launcher binary', as
   assert.ok(versions.components.launcher.assets.every((asset) => asset.url.includes('/foggy-runtime-launcher-v0.1.21/')))
   assert.ok(versions.components.analysisSkill.assets.every((asset) => asset.url.includes('/releases/download/v0.1.18/')))
   assert.ok(versions.components.semanticQuerySkill.assets.every((asset) => asset.url.includes('/releases/download/v0.1.18/')))
+})
+
+test('publishes strict Typert codecs for both schema-field and create-factory loaders', () => {
+  const status = descriptors.find((item) => item.method === 'status')
+  assert.equal(status.result.mode, 'strict')
+  assert.equal(typeof status.result.schema.parse, 'function')
+  assert.equal(typeof status.result.create, 'function')
+  assert.deepEqual(status.result.create().parse({ ok: true }), { ok: true })
+
+  const saveSettings = descriptors.find((item) => item.method === 'saveRuntimeSettings')
+  const inputCodec = saveSettings.parameters[0].codec
+  assert.equal(typeof inputCodec.schema.parse, 'function')
+  assert.equal(typeof inputCodec.create, 'function')
+  assert.deepEqual(inputCodec.create().parse({ port: 18166 }), { port: 18166 })
+  assert.throws(() => inputCodec.create().parse({ port: 80 }))
 })
 
 test('persists one stable validated Runtime port in the plugin data root', async () => {
@@ -216,7 +233,8 @@ test('resumes an interrupted managed Python download before verification', async
     if (requestCount === 1) {
       response.writeHead(200, { 'content-length': body.length })
       response.write(body.subarray(0, 8))
-      setTimeout(() => response.destroy(), 10)
+      // Give Fetch time to consume the first chunk before simulating a disconnect.
+      setTimeout(() => response.destroy(), 100)
       return
     }
     resumedRange = request.headers.range

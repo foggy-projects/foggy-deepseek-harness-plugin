@@ -7,7 +7,7 @@ are downloaded only when the user selects **Initialize and start** (or the
 equivalent component action). Existing installations are not silently changed
 when the plugin package is upgraded.
 
-The `0.4.1-rc.1` compatibility candidate targets DeepSeek Harness `0.1.5-rc.2`
+The `0.4.2-rc.1` compatibility candidate targets DeepSeek Harness `0.1.7-rc.2`
 and requires a system Node.js `>=24.0.0`. Foggy's Java Launcher uses a system
 Java 17+. Foggy manages its own pinned Python 3.12 runtime
 inside the per-user component directory; it does not require a system Python,
@@ -17,26 +17,30 @@ modify `PATH`, or register Python globally. Advanced users may explicitly set
 ## Local release-candidate installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.1-rc.1.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.2-rc.1.tgz
 ```
 
 Restart `dsh web`, use the browser it opens (or the complete printed URL,
 including `?token=...`), open Settings → Plugins → Foggy Data Analysis, and
 initialize the components from there. Do not share the launch-token URL.
 
-For the DSH 0.1.5-rc.2 compatibility pre-release, install the exact candidate
+For the DSH 0.1.7-rc.2 compatibility pre-release, install the exact candidate
 so the stable `beta` channel is not changed:
 
 ```powershell
-dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@0.4.1-rc.1
+dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@0.4.2-rc.1
 ```
 
-The published candidate is also available through the dedicated `dsh015` npm
+The published candidate is also available through the dedicated `dsh017` npm
 dist-tag:
 
 ```powershell
-dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@dsh015
+dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@dsh017
 ```
+
+The earlier DSH `0.1.5-rc.2` compatibility candidate remains available as
+`@foggy-projects/deepseek-harness-plugin@dsh015`; neither candidate moves the
+existing `beta` channel.
 
 For the existing stable beta channel, the corresponding one-line install is:
 
@@ -51,12 +55,12 @@ versions. Updates are blocked while Runtime is running so the active Java
 process and the next-launcher state cannot diverge. Component-specific repair
 actions remain available under **Advanced repair**.
 
-DeepSeek Harness 0.1.5-rc.2 applies pnpm's minimum-release-age policy to its
-profile lockfile. An upgrade performed shortly after publication can therefore
-fail while naming either the new plugin or the previously installed Beta. This
-is a DSH profile-policy failure, not a damaged Foggy package. Use the exact
-profile directory printed in the error and rebuild its lockfile, then rerun the
-same `dsh plugin add` command:
+DeepSeek Harness profiles can apply pnpm's minimum-release-age policy to their
+lockfiles. An upgrade performed shortly after publication can therefore fail
+while naming either the new plugin or a previously installed version. This is
+a DSH profile-policy failure, not a damaged Foggy package. Use the exact profile
+directory printed in the error and rebuild its lockfile, then rerun the same
+`dsh plugin add` command:
 
 ```powershell
 Set-Location "<the DSH profile directory printed in the error>"
@@ -128,7 +132,9 @@ rollback plan.
 
 See [`docs/PUBLIC-BETA-READINESS.md`](./docs/PUBLIC-BETA-READINESS.md) for the
 tested public Beta scope, release gates, and stable-release blockers.
-The DSH 0.1.5-rc.2 compatibility candidate is documented in
+The DSH 0.1.7-rc.2 compatibility candidate is documented in
+[`docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.1.md`](./docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.1.md).
+The earlier DSH 0.1.5-rc.2 candidate is documented in
 [`docs/RELEASE-CANDIDATE-0.4.1-DSH-0.1.5-RC.1.md`](./docs/RELEASE-CANDIDATE-0.4.1-DSH-0.1.5-RC.1.md).
 Native Windows acceptance instructions are in
 [`docs/WINDOWS-BETA-ACCEPTANCE.md`](./docs/WINDOWS-BETA-ACCEPTANCE.md); database

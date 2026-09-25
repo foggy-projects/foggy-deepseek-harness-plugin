@@ -1,6 +1,6 @@
 {
   "name": "@foggy-projects/deepseek-harness-plugin",
-  "version": "0.4.1-rc.1",
+  "version": "0.4.2-rc.1",
   "description": "Foggy Java data analysis engine integration for DeepSeek Harness",
   "keywords": [
     "deepseek-harness",
@@ -40,6 +40,7 @@
     "docs/RELEASE-CANDIDATE-0.4.0-RC.2.md",
     "docs/RELEASE-CANDIDATE-0.4.0-RC.3.md",
     "docs/RELEASE-CANDIDATE-0.4.1-DSH-0.1.5-RC.1.md",
+    "docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.1.md",
     "docs/COMMUNITY-MARKETPLACES.md",
     "docs/WINDOWS-BETA-ACCEPTANCE.md",
     "THIRD-PARTY-RUNTIME-NOTICES.md",
@@ -68,12 +69,12 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-api-remotes": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-client-locale": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-client-ui-settings": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-skill": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-typert-protocol": "^0.1.5-rc.2"
+    "@deepseek-ai/dsh-api-remotes": "^0.1.7-rc.2",
+    "@deepseek-ai/dsh-client-locale": "^0.1.7-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings": "^0.1.7-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "^0.1.7-rc.2",
+    "@deepseek-ai/dsh-skill": "^0.1.7-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.7-rc.2"
   },
   "scripts": {
     "check": "node --check lib/index.js && node --check lib/atomic-json.js && node --check lib/diagnostics.js && node --check lib/python-runtime.js && node --check lib/runtime-settings.js && node --check lib/skill-provider.js && node --check lib/client.js && node --check lib/typert.js && node --check lib/remote.js",
