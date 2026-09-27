@@ -1,7 +1,7 @@
 {
   "schemaVersion": "foggy-deepseek-onboarding-versions/v1",
-  "packageVersion": "0.4.2-rc.2",
-  "validatedAt": "2026-09-27",
+  "packageVersion": "0.4.2-rc.3",
+  "validatedAt": "2026-09-28",
   "components": {
     "deepseekHarness": {
       "version": "0.1.7-rc.2",
@@ -66,39 +66,39 @@
       }
     },
     "launcher": {
-      "version": "0.1.21",
+      "version": "0.1.22",
       "minimumJavaVersion": "17.0.0",
       "runtimeApiContract": "foggy-runtime-api/v1",
       "assets": [
         {
-          "file": "foggy-runtime-launcher-0.1.21.jar",
-          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.21/foggy-runtime-launcher-0.1.21.jar",
-          "sha256": "0b5002e40633f4606b0f5d3adbcd734ad4a11d8204decab162bb53b6ab28b3b3"
+          "file": "foggy-runtime-launcher-0.1.22.jar",
+          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.22/foggy-runtime-launcher-0.1.22.jar",
+          "sha256": "c26d21ff50323d6adc3124e084462f8381407c6f79802cefac90f4ddafa00dca"
         },
         {
           "file": "start-foggy-runtime.ps1",
-          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.21/start-foggy-runtime.ps1",
-          "sha256": "8609f8c60bad9e56460b132e1bd6c699d4ebf47cf591c3e6bc37bc8563d7de5a"
+          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.22/start-foggy-runtime.ps1",
+          "sha256": "dcfaa3d4e512e72f16e6d44dda00ae27f0cfc164763cac73c0ee63fd4b7236bc"
         },
         {
           "file": "start-foggy-runtime.sh",
-          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.21/start-foggy-runtime.sh",
-          "sha256": "fa844f422473ba00a31cf801092b0fe4ef93fe8697656a9063e0ec27dacef715"
+          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.22/start-foggy-runtime.sh",
+          "sha256": "fa304f66679f0323157ea7948fd95fb1082264f115b9b4d688b1995c24b3c1d7"
         },
         {
           "file": "README-foggy-runtime-launcher.md",
-          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.21/README-foggy-runtime-launcher.md",
-          "sha256": "6b63cafe798e19c255a043e15e64109f6fb3252aee3fb9c37ab6a66d9adbf3cf"
+          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.22/README-foggy-runtime-launcher.md",
+          "sha256": "43711229b425f13fa242d58916ef17cbd3dcebe4fc18b951aa9bf4befc056c26"
         },
         {
           "file": "runtime-launcher-manifest.json",
-          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.21/runtime-launcher-manifest.json",
-          "sha256": "1591804035bbf589912907195c74746bf97edff3b9e6ebd7d569ecc0e5aebed7"
+          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.22/runtime-launcher-manifest.json",
+          "sha256": "2b9efb82e8f954f2407f36ae419984068d384e1e0b86796ccfad0981dc7b2a30"
         },
         {
           "file": "SHA256SUMS",
-          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.21/SHA256SUMS",
-          "sha256": "6e03f8861176d73be22c4c7c6f6345a68e49aacfb5375cd5cf2c54f1dc4cbe5d"
+          "url": "https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.22/SHA256SUMS",
+          "sha256": "51dc530e275bc1c9e9c73e9fce13d236fd0c5e3bfcebd9b03b837c5bc05e59f8"
         }
       ]
     },

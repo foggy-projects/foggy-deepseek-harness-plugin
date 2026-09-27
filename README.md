@@ -7,7 +7,7 @@ are downloaded only when the user selects **Initialize and start** (or the
 equivalent component action). Existing installations are not silently changed
 when the plugin package is upgraded.
 
-The `0.4.2-rc.2` compatibility candidate targets DeepSeek Harness `0.1.7-rc.2`
+The `0.4.2-rc.3` compatibility candidate targets DeepSeek Harness `0.1.7-rc.2`
 and requires a system Node.js `>=24.0.0`. Foggy's Java Launcher uses a system
 Java 17+. Foggy manages its own pinned Python 3.12 runtime
 inside the per-user component directory; it does not require a system Python,
@@ -17,7 +17,7 @@ modify `PATH`, or register Python globally. Advanced users may explicitly set
 ## Local release-candidate installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.2-rc.2.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.2-rc.3.tgz
 ```
 
 Restart `dsh web`, use the browser it opens (or the complete printed URL,
@@ -28,11 +28,11 @@ Install the exact DSH 0.1.7-rc.2 compatibility candidate
 so the stable `beta` channel is not changed:
 
 ```powershell
-dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@0.4.2-rc.2
+dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@0.4.2-rc.3
 ```
 
 The `dsh017` npm dist-tag points to the most recently published DSH 0.1.7
-candidate (`0.4.2-rc.2` at this release). Check the resolved version before
+candidate (`0.4.2-rc.3` at this release). Check the resolved version before
 using this moving tag:
 
 ```powershell
@@ -130,6 +130,15 @@ same wildcard binding used by the Java server, so a conflicting application or W
 port proxy produces an immediate, high-visibility error instead of a readiness timeout.
 The CLI and Skills resolve the resulting stable Runtime URL from managed state.
 
+For a successful standard QueryModel DSL call made through the native
+`foggy_query` tool, Harness shows a query card with the model, namespace,
+row count, DSL, and execution result. Its **Open DataViewer** action creates
+a local preview URL only when clicked; the query itself does not create one.
+The preview re-executes the DSL against the current model and data rather than
+freezing the original rows. In the lite Runtime the preview cache is bounded,
+process-local, and lost on restart. CTE calls are not included in this first
+DataViewer integration.
+
 This beta remains a local dev/test integration. It does not automatically extend
 local credentials or approvals into a formal environment. Production model
 publication should use a separate manual or dedicated deployment workflow with
@@ -139,6 +148,8 @@ rollback plan.
 See [`docs/PUBLIC-BETA-READINESS.md`](./docs/PUBLIC-BETA-READINESS.md) for the
 tested public Beta scope, release gates, and stable-release blockers.
 The DSH 0.1.7-rc.2 compatibility candidate is documented in
+[`docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.3.md`](./docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.3.md).
+The previous DSH 0.1.7-rc.2 candidate is documented in
 [`docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.2.md`](./docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.2.md).
 The earlier DSH 0.1.5-rc.2 candidate is documented in
 [`docs/RELEASE-CANDIDATE-0.4.1-DSH-0.1.5-RC.1.md`](./docs/RELEASE-CANDIDATE-0.4.1-DSH-0.1.5-RC.1.md).

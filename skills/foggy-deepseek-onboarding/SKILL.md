@@ -60,6 +60,12 @@ are authoritative; do not copy the Skill into the current workspace.
 6. Iterate through model validation, Bundle registration/update, model refresh/describe, query
    validation, and bounded query execution. Development publication means making the local model
    directory effective in this local Runtime; it is not a production release.
+   For the final user-facing standard DSL query in Harness, use the native `foggy_query` tool when
+   available (explicit namespace, published QM, `columns`, and `limit` of 1–100). It validates and
+   executes, then displays a query card. The card creates a DataViewer preview link only if the user
+   clicks its button; never pre-create links for every query. This first version does not support
+   `DSL_CTE` or `executable_plan` in the native tool. Continue using the documented CLI route for
+   CTE queries and do not claim they have a DataViewer preview.
    A successful response may still contain Runtime `warnings`. Preserve and report their stable facts
    (`code`, `path`, `message`, `suggestedNextAction`, `safeToAutoRepair`, `normalizedFragment`,
    `docsRef`, and `details.allowedProperties`)
