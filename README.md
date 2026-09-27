@@ -7,7 +7,7 @@ are downloaded only when the user selects **Initialize and start** (or the
 equivalent component action). Existing installations are not silently changed
 when the plugin package is upgraded.
 
-The `0.4.2-rc.1` compatibility candidate targets DeepSeek Harness `0.1.7-rc.2`
+The `0.4.2-rc.2` compatibility candidate targets DeepSeek Harness `0.1.7-rc.2`
 and requires a system Node.js `>=24.0.0`. Foggy's Java Launcher uses a system
 Java 17+. Foggy manages its own pinned Python 3.12 runtime
 inside the per-user component directory; it does not require a system Python,
@@ -17,22 +17,23 @@ modify `PATH`, or register Python globally. Advanced users may explicitly set
 ## Local release-candidate installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.2-rc.1.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.2-rc.2.tgz
 ```
 
 Restart `dsh web`, use the browser it opens (or the complete printed URL,
 including `?token=...`), open Settings → Plugins → Foggy Data Analysis, and
 initialize the components from there. Do not share the launch-token URL.
 
-For the DSH 0.1.7-rc.2 compatibility pre-release, install the exact candidate
+After publication, install the exact DSH 0.1.7-rc.2 compatibility candidate
 so the stable `beta` channel is not changed:
 
 ```powershell
-dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@0.4.2-rc.1
+dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@0.4.2-rc.2
 ```
 
-The published candidate is also available through the dedicated `dsh017` npm
-dist-tag:
+The `dsh017` npm dist-tag points to the most recently published DSH 0.1.7
+candidate. Check the resolved version before using the tag; it will move to
+`0.4.2-rc.2` when this candidate is published:
 
 ```powershell
 dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@dsh017
@@ -91,6 +92,11 @@ The Bundle registers `foggy-deepseek-onboarding` and the downloaded
 are available in every DSH workspace without copying or symlinking `.agents`.
 The current session `cwd` remains the workspace boundary for semantic drafts and
 evidence.
+An existing Harness session keeps its original workspace even if another workspace
+becomes the default. Create a new session in the selected workspace when testing
+model-file isolation; an isolated `DSH_HOME` alone does not change a session's
+`cwd`. The `--workspace-root` option in the plugin install command is a pnpm
+installation option, not a Harness workspace selector.
 
 Opaque CLI profiles remain available for users who prefer them and default to
 the private persistent `<dataRoot>/cli-profiles` directory, but they are not a
@@ -133,7 +139,7 @@ rollback plan.
 See [`docs/PUBLIC-BETA-READINESS.md`](./docs/PUBLIC-BETA-READINESS.md) for the
 tested public Beta scope, release gates, and stable-release blockers.
 The DSH 0.1.7-rc.2 compatibility candidate is documented in
-[`docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.1.md`](./docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.1.md).
+[`docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.2.md`](./docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.2.md).
 The earlier DSH 0.1.5-rc.2 candidate is documented in
 [`docs/RELEASE-CANDIDATE-0.4.1-DSH-0.1.5-RC.1.md`](./docs/RELEASE-CANDIDATE-0.4.1-DSH-0.1.5-RC.1.md).
 Native Windows acceptance instructions are in
