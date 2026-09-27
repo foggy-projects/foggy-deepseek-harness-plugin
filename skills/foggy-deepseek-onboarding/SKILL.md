@@ -40,8 +40,9 @@ are authoritative; do not copy the Skill into the current workspace.
 
 ## Development workflow
 
-1. Run `doctor`. Start Runtime only if it is not already healthy; require `wait-ready` and
-   `capabilities` after a new start.
+1. Run `doctor`. Runtime health is established by the managed CLI's read-only `wait-ready` check;
+   process visibility alone does not prove HTTP readiness. Start Runtime only if it is not already
+   healthy; require `wait-ready` and `capabilities` after a new start.
 2. Accept datasource connection details from the user's message, a user-supplied local JSON file, an
    environment variable, or Runtime Console. Direct `password` is supported for local development.
    The wrapper submits it to the public Runtime API without copying it into onboarding state or

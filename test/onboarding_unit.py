@@ -20,6 +20,50 @@ SPEC.loader.exec_module(onboarding)
 
 
 class OnboardingUnitTests(unittest.TestCase):
+    def test_runtime_health_uses_readiness_api_when_process_inspection_cannot_confirm_pid(self):
+        runtime_state = {
+            "pid": 4242,
+            "runtimeUrl": "http://127.0.0.1:18166",
+            "namespace": "default",
+            "identity": {"engine": "java"},
+        }
+        with (
+            patch.object(onboarding, "process_info", return_value={"running": False, "commandLine": ""}),
+            patch.object(onboarding, "cli_json", return_value={"success": True, "data": {"ready": True}}) as cli,
+        ):
+            result = onboarding.runtime_health({"cli": {"command": "foggy-runtime"}}, runtime_state)
+
+        self.assertEqual(result["status"], "running")
+        self.assertEqual(result["verifiedBy"], "runtime-api")
+        self.assertEqual(result["processInspection"], "not-confirmed")
+        self.assertEqual(result["readiness"], "ready")
+        self.assertEqual(cli.call_args.args[2], "default")
+        self.assertEqual(cli.call_args.args[3][0], "wait-ready")
+
+    def test_runtime_health_reports_unverified_when_neither_process_nor_api_is_confirmed(self):
+        runtime_state = {"pid": 4242, "runtimeUrl": "http://127.0.0.1:18166", "namespace": "default"}
+        with (
+            patch.object(onboarding, "process_info", return_value={"running": False, "commandLine": ""}),
+            patch.object(onboarding, "cli_json", side_effect=onboarding.OnboardingError("not ready")),
+        ):
+            result = onboarding.runtime_health({"cli": {"command": "foggy-runtime"}}, runtime_state)
+
+        self.assertEqual(result["status"], "unverified")
+        self.assertEqual(result["verifiedBy"], "none")
+        self.assertEqual(result["readiness"], "failed")
+
+    def test_runtime_health_does_not_report_ready_from_process_presence_alone(self):
+        runtime_state = {"pid": 4242, "runtimeUrl": "http://127.0.0.1:18166", "namespace": "default"}
+        with (
+            patch.object(onboarding, "process_info", return_value={"running": True, "commandLine": "java ...launcher.jar"}),
+            patch.object(onboarding, "cli_json", return_value={"success": True, "data": {"ready": False}}),
+        ):
+            result = onboarding.runtime_health({"cli": {"command": "foggy-runtime"}}, runtime_state)
+
+        self.assertEqual(result["status"], "unverified")
+        self.assertEqual(result["processInspection"], "confirmed")
+        self.assertEqual(result["readiness"], "not-ready")
+
     def test_runtime_settings_default_and_persisted_port(self):
         with tempfile.TemporaryDirectory() as temporary:
             data_root = Path(temporary)

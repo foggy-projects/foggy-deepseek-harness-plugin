@@ -1790,8 +1790,9 @@ def onboarding_context(args: argparse.Namespace, require_runtime: bool = False) 
     if require_runtime:
         if not runtime_state:
             raise OnboardingError("Runtime is not started; run runtime-start first")
-        if not process_info(int(runtime_state.get("pid", 0)))["running"]:
-            raise OnboardingError("Runtime state is stale; restart Runtime before continuing")
+        health = runtime_health(install_state, runtime_state)
+        if health["status"] != "running":
+            raise OnboardingError("Runtime readiness could not be verified; run doctor and inspect Runtime health before continuing")
     return install_root, install_state, data_root, runtime_state
 
 
@@ -1812,6 +1813,52 @@ def cli_json(install_state: dict, runtime_state: dict, namespace: str, command: 
             detail = error
         raise OnboardingError(f"{label} returned success=false: {detail or 'unknown Runtime error'}")
     return payload
+
+
+def runtime_health(install_state: dict, runtime_state: dict) -> dict:
+    """Use Runtime API readiness as the health signal; process inspection is diagnostic only."""
+    pid = runtime_state.get("pid")
+    info = process_info(int(pid or 0))
+    base = {
+        "pid": pid,
+        "runtimeUrl": runtime_state.get("runtimeUrl"),
+        "identity": runtime_state.get("identity"),
+    }
+
+    try:
+        probe = cli_json(
+            install_state,
+            runtime_state,
+            runtime_state.get("namespace") or "default",
+            ["wait-ready", "--timeout-seconds", "2", "--interval-seconds", "1"],
+            "Runtime readiness probe",
+            timeout=5,
+        )
+    except OnboardingError:
+        return {
+            **base,
+            "status": "unverified",
+            "verifiedBy": "none",
+            "processInspection": "confirmed" if info["running"] else "not-confirmed",
+            "readiness": "failed",
+        }
+
+    data = probe.get("data")
+    if isinstance(data, dict) and data.get("ready") is True:
+        return {
+            **base,
+            "status": "running",
+            "verifiedBy": "runtime-api",
+            "processInspection": "confirmed" if info["running"] else "not-confirmed",
+            "readiness": "ready",
+        }
+    return {
+        **base,
+        "status": "unverified",
+        "verifiedBy": "none",
+        "processInspection": "confirmed" if info["running"] else "not-confirmed",
+        "readiness": "not-ready",
+    }
 
 
 TRANSIENT_DATASOURCE_TEST_MARKERS = (
@@ -2741,7 +2788,7 @@ def next_onboarding_action(state: dict) -> dict:
 
 def onboarding_status_command(args: argparse.Namespace) -> dict:
     state, _install_state, _data_root, runtime_state = require_profile(args, require_runtime=False)
-    runtime_running = bool(runtime_state and process_info(int(runtime_state.get("pid", 0)))["running"])
+    runtime_running = bool(runtime_state and runtime_health(_install_state, runtime_state)["status"] == "running")
     connection = state["connection"]
     password_env = connection.get("passwordEnv")
     return {
@@ -3356,8 +3403,7 @@ def doctor_command(args: argparse.Namespace) -> dict:
         runtime_state_path = data_root / "runtime-state.json"
         if runtime_state_path.is_file():
             runtime_state = json.loads(runtime_state_path.read_text(encoding="utf-8"))
-            info = process_info(int(runtime_state.get("pid", 0)))
-            runtime = {"status": "running" if info["running"] else "stale", "pid": runtime_state.get("pid"), "runtimeUrl": runtime_state.get("runtimeUrl"), "identity": runtime_state.get("identity")}
+            runtime = runtime_health(state, runtime_state)
     required = {
         "python": python_ok,
         "java": java_ok,

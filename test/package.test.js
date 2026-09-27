@@ -5,6 +5,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
+import { runInNewContext } from 'node:vm'
 import { fileURLToPath } from 'node:url'
 import { compatible, compatibleNode, versionParts } from '../lib/version.js'
 import { ensurePythonRuntime, managedPythonExecutable, probePythonRuntime, pythonAssetKey, selectPythonAsset } from '../lib/python-runtime.js'
@@ -86,6 +87,44 @@ test('publishes strict Typert codecs for both schema-field and create-factory lo
   assert.equal(typeof inputCodec.create, 'function')
   assert.deepEqual(inputCodec.create().parse({ port: 18166 }), { port: 18166 })
   assert.throws(() => inputCodec.create().parse({ port: 80 }))
+})
+
+test('client Typert contribution materializes strict schemas for DSH 0.1.7', async () => {
+  const client = await readFile(join(root, 'lib', 'client.js'), 'utf8')
+  let plugin
+  runInNewContext(client, {
+    window: {
+      __ModuleLoader__: {
+        load({ factory }) {
+          plugin = factory((specifier) => {
+            if (specifier === 'react/jsx-runtime') return { jsx() {}, jsxs() {} }
+            if (specifier === 'react') return { useCallback() {}, useEffect() {}, useState() {} }
+            throw new Error(`Unexpected client dependency: ${specifier}`)
+          })
+        },
+      },
+    },
+    document: { querySelector: () => ({}) },
+  })
+
+  let contribution
+  await plugin.apply({
+    remote: { $mount: async (value) => { contribution = value; return async () => {} } },
+    effect() {},
+    locale: { register() {}, bind: () => (key) => key },
+    inject() {},
+  })
+
+  assert.ok(contribution)
+  for (const descriptor of contribution.descriptors) {
+    assert.equal(typeof descriptor.result.create, 'function', `${descriptor.id} result codec`)
+    assert.equal(typeof descriptor.result.create().parse, 'function', `${descriptor.id} result schema`)
+    for (const parameter of descriptor.parameters) {
+      if (parameter.codec.mode !== 'strict') continue
+      assert.equal(typeof parameter.codec.create, 'function', `${descriptor.id} ${parameter.name} codec`)
+      assert.equal(typeof parameter.codec.create().parse, 'function', `${descriptor.id} ${parameter.name} schema`)
+    }
+  }
 })
 
 test('persists one stable validated Runtime port in the plugin data root', async () => {
@@ -351,6 +390,8 @@ test('exposes persistent initialization and Runtime startup progress to the web 
   assert.match(gateway, /progress\?\.operationId === operation\.id/)
   assert.match(client, /role: 'progressbar'/)
   assert.match(client, /foggy-progress-fill/)
+  const operationPoller = client.slice(client.indexOf('const waitForOperation'), client.indexOf('const runSequence'))
+  assert.match(operationPoller, /operation\?\.id === operationId[\s\S]*setView\(\(current\) => \(\{ \.\.\.current, phase: 'ready', status \}\)\)/)
   assert.match(client, /progressRuntimeReadiness/)
   assert.match(client, /progress\.timing\?\.elapsedSeconds/)
   assert.match(client, /foggy-error-panel/)
@@ -361,6 +402,9 @@ test('exposes persistent initialization and Runtime startup progress to the web 
   assert.match(onboarding, /--progress-file/)
   assert.match(onboarding, /command_result_with_progress/)
   assert.match(onboarding, /last-runtime-start-failure\.json/)
+  assert.match(onboarding, /def runtime_health\(install_state: dict, runtime_state: dict\)/)
+  assert.match(onboarding, /"verifiedBy": "runtime-api"/)
+  assert.match(onboarding, /Runtime readiness could not be verified/)
   assert.match(gateway, /args\[0\] === 'install' \|\| args\[0\] === 'runtime-start'/)
   assert.match(gateway, /'runtime-start', '--install-root', roots\.installRoot, '--data-root', roots\.dataRoot/)
   assert.match(gateway, /'--port', String\(settings\.port\)/)
