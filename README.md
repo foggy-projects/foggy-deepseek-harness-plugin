@@ -7,7 +7,7 @@ are downloaded only when the user selects **Initialize and start** (or the
 equivalent component action). Existing installations are not silently changed
 when the plugin package is upgraded.
 
-The `0.4.2-rc.3` compatibility candidate targets DeepSeek Harness `0.1.7-rc.2`
+The `0.4.2-rc.4` compatibility candidate targets DeepSeek Harness `0.1.7-rc.2`
 and requires a system Node.js `>=24.0.0`. Foggy's Java Launcher uses a system
 Java 17+. Foggy manages its own pinned Python 3.12 runtime
 inside the per-user component directory; it does not require a system Python,
@@ -17,7 +17,7 @@ modify `PATH`, or register Python globally. Advanced users may explicitly set
 ## Local release-candidate installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.2-rc.3.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.2-rc.4.tgz
 ```
 
 Restart `dsh web`, use the browser it opens (or the complete printed URL,
@@ -28,11 +28,11 @@ Install the exact DSH 0.1.7-rc.2 compatibility candidate
 so the stable `beta` channel is not changed:
 
 ```powershell
-dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@0.4.2-rc.3
+dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@0.4.2-rc.4
 ```
 
 The `dsh017` npm dist-tag points to the most recently published DSH 0.1.7
-candidate (`0.4.2-rc.3` at this release). Check the resolved version before
+candidate (`0.4.2-rc.4` at this release). Check the resolved version before
 using this moving tag:
 
 ```powershell
@@ -137,7 +137,9 @@ a local preview URL only when clicked; the query itself does not create one.
 The preview re-executes the DSL against the current model and data rather than
 freezing the original rows. In the lite Runtime the preview cache is bounded,
 process-local, and lost on restart. CTE calls are not included in this first
-DataViewer integration.
+DataViewer integration. DataViewer currently displays model-backed fields and
+may omit ad-hoc aggregate columns from a query; the Harness card retains the
+complete executed result and makes this limitation explicit.
 
 This beta remains a local dev/test integration. It does not automatically extend
 local credentials or approvals into a formal environment. Production model
@@ -148,7 +150,7 @@ rollback plan.
 See [`docs/PUBLIC-BETA-READINESS.md`](./docs/PUBLIC-BETA-READINESS.md) for the
 tested public Beta scope, release gates, and stable-release blockers.
 The DSH 0.1.7-rc.2 compatibility candidate is documented in
-[`docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.3.md`](./docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.3.md).
+[`docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.4.md`](./docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.4.md).
 The previous DSH 0.1.7-rc.2 candidate is documented in
 [`docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.2.md`](./docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.2.md).
 The earlier DSH 0.1.5-rc.2 candidate is documented in

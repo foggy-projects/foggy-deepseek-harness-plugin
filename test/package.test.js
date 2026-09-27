@@ -24,12 +24,13 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.2-rc.3')
+  assert.equal(pkg.version, '0.4.2-rc.4')
   assert.equal(pkg.engines.node, '>=24.0.0')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
   assert.ok(!pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-runtime'))
   assert.equal(pkg.peerDependencies['@deepseek-ai/dsh-client-runtime'], undefined)
+  assert.equal(pkg.dependencies['@deepseek-ai/dsh-tools'], undefined)
   assert.ok(pkg.keywords.includes('dsh-plugin'))
   assert.equal(pkg.repository.url, 'git+https://github.com/foggy-projects/foggy-deepseek-harness-plugin.git')
   assert.equal(pkg.homepage, 'https://github.com/foggy-projects/foggy-deepseek-harness-plugin#readme')
@@ -57,7 +58,7 @@ test('documents the pnpm workspace-root install required by DSH 0.1.7 rc.2', asy
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.2-rc.3')
+  assert.equal(versions.packageVersion, '0.4.2-rc.4')
   assert.equal(versions.components.deepseekHarness.version, '0.1.7-rc.2')
   assert.equal(versions.components.deepseekHarness.minimumNodeVersion, '24.0.0')
   assert.equal(versions.components.python.version, '3.12.13')
