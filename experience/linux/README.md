@@ -33,8 +33,8 @@ Start the prepared profile with:
 ~/.local/share/foggy-deepseek-harness-experience/run.sh
 ```
 
-Open the URL printed by DSH, then choose **Settings → Plugins → Foggy Data Analysis** and select
-**Initialize Foggy**. Private Python, the CLI, Launcher, and analysis Skill are downloaded from their
+Open the URL printed by DSH, then choose **Settings → Built-in plugins → Foggy Data Analysis** and select
+**Initialize and start**. Private Python, the CLI, Launcher, and analysis Skill are downloaded from their
 pinned public Releases and verified before installation. A system Python is not required.
 
 Provider configuration remains a separate DSH setup step. Store API keys in a private environment

@@ -1,12 +1,12 @@
 # Native Windows Beta acceptance
 
-This runbook validates DeepSeek Harness `0.1.2-rc.1` with Foggy plugin
-`0.4.0-rc.2` on a clean 64-bit Windows 10 or Windows 11 machine. Use a local
+This runbook validates DeepSeek Harness `0.1.7-rc.2` with Foggy plugin
+`0.4.2-rc.2` on a clean 64-bit Windows 10 or Windows 11 machine. Use a local
 directory that is not synchronized by OneDrive.
 
 ## Prerequisites
 
-Install a system Node.js matching `^22.19.0 || >=24.0.0` and a system Java 17+
+Install a system Node.js `>=24.0.0` and a system Java 17+
 JRE/JDK. Windows must also provide `tar` (included in supported Windows 10/11
 versions). A system Python is neither required nor used by default.
 
@@ -27,11 +27,11 @@ and is not registered as a system Python.
 New-Item -ItemType Directory -Force C:\FoggyAcceptance | Out-Null
 Set-Location C:\FoggyAcceptance
 
-npx --yes --package=@deepseek-ai/dsh@0.1.2-rc.1 --package=pnpm@11.7.0 `
+npx --yes --package=@deepseek-ai/dsh@0.1.7-rc.2 --package=pnpm@11.7.0 `
   dsh plugin --profile web add --workspace-root `
-  "@foggy-projects/deepseek-harness-plugin@beta"
+  "@foggy-projects/deepseek-harness-plugin@0.4.2-rc.2"
 
-npx --yes --package=@deepseek-ai/dsh@0.1.2-rc.1 --package=pnpm@11.7.0 dsh web
+npx --yes --package=@deepseek-ai/dsh@0.1.7-rc.2 --package=pnpm@11.7.0 dsh web
 ```
 
 If an immediate upgrade reports
@@ -49,7 +49,13 @@ token has established its local authentication cookie. Treat the launch URL as
 temporary local access material and do not paste it into chat or diagnostics.
 
 Configure an LLM provider, select the `C:\FoggyAcceptance` workspace, then open
-**Settings → Plugins → Foggy Data Analysis** and choose **Initialize Foggy**.
+**Settings → Built-in plugins → Foggy Data Analysis** and choose
+**Initialize and start**. The settings page displays the current phase and
+step count while initialization runs. If an existing chat was opened before
+selecting this workspace, create a new chat in the selected workspace: changing
+the default workspace does not change an existing chat's working directory.
+`--workspace-root` in the install command is a pnpm resolution option, not a
+DSH workspace selector.
 
 Before starting Runtime, confirm the configured port in **Runtime connection
 settings**. A fresh profile defaults to `18166`. To use another port, enter an
@@ -62,13 +68,15 @@ Expected component state:
 - CLI 0.1.23;
 - Launcher 0.1.21;
 - analysis/query Skills 0.1.18;
-- onboarding Skill 0.4.0-rc.2;
+- onboarding Skill 0.4.2-rc.2;
 - Java 17+ available;
 - native DSH Skill registration available.
 
 Runtime startup shows its current phase, elapsed time, and the 180-second
 readiness deadline. Typical startup is 15–30 seconds on the validated WSL2 host
 and may take up to 60 seconds on Windows with cold JVM or antivirus scanning.
+Initialization downloads a private Python and other managed components and can
+take longer than Runtime startup; follow the live phase/step display.
 The plugin monitors the Launcher PID and fails promptly when Java exits before
 readiness. On failure, export diagnostics before retrying; the report includes
 the startup phase, PID state, evidence directory, Runtime log locations, and

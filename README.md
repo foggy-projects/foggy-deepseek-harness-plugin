@@ -24,7 +24,7 @@ Restart `dsh web`, use the browser it opens (or the complete printed URL,
 including `?token=...`), open Settings → Plugins → Foggy Data Analysis, and
 initialize the components from there. Do not share the launch-token URL.
 
-After publication, install the exact DSH 0.1.7-rc.2 compatibility candidate
+Install the exact DSH 0.1.7-rc.2 compatibility candidate
 so the stable `beta` channel is not changed:
 
 ```powershell
@@ -32,8 +32,8 @@ dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-p
 ```
 
 The `dsh017` npm dist-tag points to the most recently published DSH 0.1.7
-candidate. Check the resolved version before using the tag; it will move to
-`0.4.2-rc.2` when this candidate is published:
+candidate (`0.4.2-rc.2` at this release). Check the resolved version before
+using this moving tag:
 
 ```powershell
 dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@dsh017

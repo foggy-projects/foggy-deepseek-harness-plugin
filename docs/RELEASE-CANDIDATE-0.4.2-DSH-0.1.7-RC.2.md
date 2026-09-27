@@ -45,7 +45,6 @@ Install the exact version with:
 dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@0.4.2-rc.2
 ```
 
-The `dsh017` dist-tag currently points to the previous published candidate;
-it is intended to point to this version after publication. The Linux
-`experience/linux/prepare.sh` entry remains pinned to the published tag until
-this candidate receives its Git tag.
+Publish this pre-release under the `dsh017` dist-tag only, leaving other npm
+channels unchanged. The Linux `experience/linux/prepare.sh` entry is pinned to
+the matching Git tag and becomes usable once that tag is published.
