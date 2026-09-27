@@ -506,28 +506,27 @@ def materialize(
     progress_total: int = 1,
     progress_message: str = "Downloading and verifying asset",
     replace_corrupt: bool = False,
+    previous_sha256: str | None = None,
 ) -> dict:
     destination.parent.mkdir(parents=True, exist_ok=True)
+    previous_valid = False
     if destination.is_file():
         try:
             verify_asset(destination, asset["sha256"])
             return {"file": asset["file"], "path": str(destination), "source": "existing", "sha256": asset["sha256"]}
         except OnboardingError:
-            if not replace_corrupt:
+            previous_valid = bool(previous_sha256 and sha256(destination).lower() == previous_sha256.lower())
+            if not previous_valid and not replace_corrupt:
                 raise
-            quarantine = destination.with_name(
-                destination.name + f".corrupt-{dt.datetime.now().strftime('%Y%m%d-%H%M%S-%f')}"
-            )
-            destination.replace(quarantine)
-    cached = cached_asset(asset["file"], asset["sha256"], cache_dirs)
-    if cached:
-        shutil.copy2(cached, destination)
-        source = "cache"
-    else:
-        temporary = destination.with_name(destination.name + ".download")
-        if temporary.exists():
-            temporary.unlink()
-        try:
+    temporary = destination.with_name(destination.name + ".download")
+    if temporary.exists():
+        temporary.unlink()
+    try:
+        cached = cached_asset(asset["file"], asset["sha256"], cache_dirs)
+        if cached:
+            shutil.copy2(cached, temporary)
+            source = "cache"
+        else:
             def reporthook(block_count: int, block_size: int, total_size: int) -> None:
                 if progress is None or not progress_phase or total_size <= 0:
                     return
@@ -540,12 +539,18 @@ def materialize(
                 )
 
             urllib.request.urlretrieve(asset["url"], temporary, reporthook=reporthook)
-            verify_asset(temporary, asset["sha256"])
-            os.replace(temporary, destination)
-        finally:
-            if temporary.exists():
-                temporary.unlink()
-        source = "network"
+            source = "network"
+        verify_asset(temporary, asset["sha256"])
+        if destination.is_file():
+            suffix = "previous" if previous_valid else "corrupt"
+            backup = destination.with_name(
+                destination.name + f".{suffix}-{dt.datetime.now().strftime('%Y%m%d-%H%M%S-%f')}"
+            )
+            shutil.copy2(destination, backup)
+        os.replace(temporary, destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
     verify_asset(destination, asset["sha256"])
     return {"file": asset["file"], "path": str(destination), "source": source, "sha256": asset["sha256"]}
 
@@ -1345,6 +1350,16 @@ def install_command(args: argparse.Namespace) -> dict:
     progress.update("cli", 2, "CLI ready", fraction=1.0)
 
     launcher_dir = install_root / "launcher"
+    previous_state = read_install_state(install_root, required=False)
+    previous_launcher_assets = {}
+    if previous_state and previous_state.get("launcher", {}).get("version") != components["launcher"]["version"]:
+        previous_launcher_assets = {
+            item["file"]: item["sha256"]
+            for item in previous_state.get("verifiedAssets", [])
+            if item.get("file") and item.get("sha256")
+            and item.get("path")
+            and normalized(item["path"]) == normalized(launcher_dir / item["file"])
+        }
     launcher_assets = components["launcher"]["assets"]
     for index, asset in enumerate(launcher_assets):
         progress.update(
@@ -1358,6 +1373,7 @@ def install_command(args: argparse.Namespace) -> dict:
             progress_index=index, progress_total=len(launcher_assets),
             progress_message="Downloading and verifying Launcher",
             replace_corrupt=repair_component == "launcher",
+            previous_sha256=previous_launcher_assets.get(asset["file"]),
         ))
         progress.update(
             "launcher", 3, "Downloading and verifying Launcher",

@@ -1,4 +1,5 @@
 import importlib.util
+import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 from pathlib import Path
@@ -20,6 +21,48 @@ SPEC.loader.exec_module(onboarding)
 
 
 class OnboardingUnitTests(unittest.TestCase):
+    def test_launcher_asset_upgrade_replaces_only_a_verified_previous_version(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            old_bytes = b"old launcher script"
+            new_bytes = b"new launcher script"
+            destination = root / "launcher" / "start-foggy-runtime.ps1"
+            destination.parent.mkdir()
+            destination.write_bytes(old_bytes)
+            source = root / "release-script.ps1"
+            source.write_bytes(new_bytes)
+            asset = {
+                "file": destination.name,
+                "url": source.as_uri(),
+                "sha256": hashlib.sha256(new_bytes).hexdigest(),
+            }
+            old_hash = hashlib.sha256(old_bytes).hexdigest()
+
+            with self.assertRaisesRegex(onboarding.OnboardingError, "SHA256 mismatch"):
+                onboarding.materialize(asset, destination, [])
+            self.assertEqual(destination.read_bytes(), old_bytes)
+            with self.assertRaisesRegex(onboarding.OnboardingError, "SHA256 mismatch"):
+                onboarding.materialize(asset, destination, [], previous_sha256="0" * 64)
+            self.assertEqual(destination.read_bytes(), old_bytes)
+
+            result = onboarding.materialize(asset, destination, [], previous_sha256=old_hash)
+            self.assertEqual(result["source"], "network")
+            self.assertEqual(destination.read_bytes(), new_bytes)
+            backups = list(destination.parent.glob(destination.name + ".previous-*"))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(backups[0].read_bytes(), old_bytes)
+
+    def test_failed_upgrade_keeps_previous_launcher_asset(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            destination = root / "start-foggy-runtime.ps1"
+            destination.write_bytes(b"old trusted script")
+            asset = {"file": destination.name, "url": (root / "missing.ps1").as_uri(), "sha256": "0" * 64}
+            old_hash = hashlib.sha256(destination.read_bytes()).hexdigest()
+            with self.assertRaises(Exception):
+                onboarding.materialize(asset, destination, [], previous_sha256=old_hash)
+            self.assertEqual(destination.read_bytes(), b"old trusted script")
+
     def test_runtime_health_uses_readiness_api_when_process_inspection_cannot_confirm_pid(self):
         runtime_state = {
             "pid": 4242,
