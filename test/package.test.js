@@ -415,6 +415,8 @@ test('pins the publicly published CLI artifacts', async () => {
 
 test('ships a Linux experience entry with private Python and native filesystem prerequisites', async () => {
   const script = await readFile(join(root, 'experience', 'linux', 'prepare.sh'), 'utf8')
+  const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
+  assert.ok(script.includes(`PLUGIN_VERSION="${pkg.version}"`))
   assert.match(script, /Node >=24 required/)
   assert.doesNotMatch(script, /require_command python3/)
   assert.match(script, /private managed 3\.12\.13/)
