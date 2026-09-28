@@ -128,6 +128,62 @@ test('client Typert contribution materializes strict schemas for DSH 0.1.7', asy
   }
 })
 
+test('renders successful Foggy queries in the standard completed-turn tail and folds after six', async () => {
+  const client = await readFile(join(root, 'lib', 'client.js'), 'utf8')
+  let plugin
+  let expanded = false
+  const element = (type, props, key) => ({ type, props, key })
+  runInNewContext(client, {
+    window: {
+      __ModuleLoader__: {
+        load({ factory }) {
+          plugin = factory((specifier) => {
+            if (specifier === 'react/jsx-runtime') return { jsx: element, jsxs: element }
+            if (specifier === 'react') return { useCallback() {}, useEffect() {}, useState: () => [expanded, (next) => { expanded = next(expanded) }] }
+            throw new Error(`Unexpected client dependency: ${specifier}`)
+          })
+        },
+      },
+    },
+    document: { querySelector: () => ({}) },
+  })
+  const entries = new Map()
+  const source = { getSnapshot: () => [] }
+  const remoteCtx = {
+    remote: { foggyIntegration: {} },
+    slots: { inject: (_name, register) => register(), register: (definition, component) => { entries.set(definition.name, { definition, component }) } },
+    sessions: { binding: () => 'binding' },
+    uiConversation: { binding: () => ({ target: () => ({ getSnapshot: () => ({ nodes: { turnDataSource: () => source } }) }) }) },
+  }
+  await plugin.apply({
+    remote: { $mount: async () => () => {} }, effect() {},
+    locale: { register() {}, bind: () => (key, args) => args?.count ? `${key}:${args.count}` : key },
+    inject: (_services, callback) => callback(remoteCtx),
+  })
+  const { definition, component } = entries.get('conversation.chat.turnTail')
+  assert.equal(definition.id, 'foggy-query-results')
+  assert.equal(definition.inject('session').keyedHooks.queryCalls('1'), source)
+  const successful = Array.from({ length: 20 }, (_, index) => ({ root: {
+    kind: 'tool-result', callId: `call-${index}`, isError: false,
+    call: { name: 'foggy_query', argsRaw: JSON.stringify({ model: `QM${index}`, namespace: 'demo', payload: { columns: ['count'], limit: 5 } }) },
+    content: [{ type: 'text', text: JSON.stringify({ execution: { success: true, data: { items: [{ count: index }] } } }) }],
+  } }))
+  const failed = { root: { ...successful[0].root, callId: 'failed', isError: true } }
+  const props = { turn: { turn: 1 }, useQueryCalls: () => [...successful, failed], api: {}, t: (key, args) => args?.count ? `${key}:${args.count}` : key }
+  const folded = component(props)
+  const heading = folded.props.children[0].props.children
+  assert.equal(heading[2].props.children, 'queryCardProvenance')
+  assert.equal(heading[3].props.children, 'queryCardSource')
+  assert.equal(folded.props.children.filter((child) => child?.type?.name === 'FoggyTurnQuery').length, 6)
+  const toggle = folded.props.children.at(-1)
+  assert.equal(toggle.props.children, 'queryCardShowAll:20')
+  toggle.props.onClick()
+  const unfolded = component(props)
+  assert.equal(unfolded.props.children.filter((child) => child?.type?.name === 'FoggyTurnQuery').length, 20)
+  assert.equal(unfolded.props.children.at(-1).props.children, 'queryCardShowLess')
+  assert.equal(component({ ...props, useQueryCalls: () => [failed] }), null)
+})
+
 test('persists one stable validated Runtime port in the plugin data root', async () => {
   const dataRoot = await mkdtemp(join(tmpdir(), 'foggy-runtime-settings-'))
   try {
