@@ -2,12 +2,12 @@
 
 This package is the lightweight DeepSeek Harness Bundle for Foggy's Java data
 analysis engine. Installing the Bundle adds a native Foggy tab under **Settings
-→ Plugins**. The private Python runtime, Launcher, and isolated CLI environment
+→ Built-in plugins**. The private Python runtime, Launcher, and isolated CLI environment
 are downloaded only when the user selects **Initialize and start** (or the
 equivalent component action). Existing installations are not silently changed
 when the plugin package is upgraded.
 
-The `0.4.2-rc.5` compatibility candidate targets DeepSeek Harness `0.1.7-rc.2`
+The `0.4.3-rc.1` compatibility candidate targets DeepSeek Harness `0.2.0-rc.2`
 and requires a system Node.js `>=24.0.0`. Foggy's Java Launcher uses a system
 Java 17+. Foggy manages its own pinned Python 3.12 runtime
 inside the per-user component directory; it does not require a system Python,
@@ -17,31 +17,31 @@ modify `PATH`, or register Python globally. Advanced users may explicitly set
 ## Local release-candidate installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.2-rc.5.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.3-rc.1.tgz
 ```
 
 Restart `dsh web`, use the browser it opens (or the complete printed URL,
-including `?token=...`), open Settings → Plugins → Foggy Data Analysis, and
+including `?token=...`), open Settings → Built-in plugins → Foggy Data Analysis, and
 initialize the components from there. Do not share the launch-token URL.
 
-Install the exact DSH 0.1.7-rc.2 compatibility candidate
-so the stable `beta` channel is not changed:
+After the version is available on npm, install the exact DSH 0.2.0-rc.2
+compatibility candidate so the stable `beta` channel is not changed:
 
 ```powershell
-dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@0.4.2-rc.5
+dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@0.4.3-rc.1
 ```
 
-The `dsh017` npm dist-tag points to the most recently published DSH 0.1.7
-candidate (`0.4.2-rc.5` at this release). Check the resolved version before
-using this moving tag:
+DSH 0.2.0 candidates use the `dsh020` npm dist-tag. Check that the tag resolves
+to the version you intend to install before using it. GitHub's published
+tarball can be installed directly when registry publication is still pending:
 
 ```powershell
-dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@dsh017
+dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@dsh020
 ```
 
-The earlier DSH `0.1.5-rc.2` compatibility candidate remains available as
-`@foggy-projects/deepseek-harness-plugin@dsh015`; neither candidate moves the
-existing `beta` channel.
+The earlier DSH `0.1.7-rc.2` and `0.1.5-rc.2` candidates remain available as
+`@foggy-projects/deepseek-harness-plugin@dsh017` and `@foggy-projects/deepseek-harness-plugin@dsh015`.
+The `dsh020` candidate does not move the existing `beta` or `latest` channels.
 
 For the existing stable beta channel, the corresponding one-line install is:
 
@@ -49,7 +49,7 @@ For the existing stable beta channel, the corresponding one-line install is:
 dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@beta
 ```
 
-After updating the plugin package, open **Settings → Plugins → Foggy Data
+After updating the plugin package, open **Settings → Built-in plugins → Foggy Data
 Analysis** and use **Update components** (or **Update and start**) to download
 the pinned CLI, Launcher, and Skills. The settings page shows current and target
 versions. Updates are blocked while Runtime is running so the active Java
@@ -138,18 +138,32 @@ reply. The card shows the model, namespace, row count, an optional five-row
 result preview with DSL/SQL details, and **View data**. If a turn has more than six
 successful queries, the first six are shown until the user expands the list.
 The detailed DSL and execution record remains in the tool trace. Clicking
-**View data** creates a fresh local preview URL each time; the historical card
-remains usable after an earlier URL expires, as long as the Harness transcript
-and the Runtime/model are still available. Individual URLs are not permanent.
-The preview re-executes the DSL against the current model and data rather than
-freezing the original rows. In the lite Runtime the preview cache is bounded,
-process-local, and lost on restart. CTE calls are not included in this first
-DataViewer integration. DataViewer currently displays model-backed fields and
-may omit ad-hoc aggregate columns from a query; the Harness card retains the
-complete executed result and makes this limitation explicit.
+**View data** calls the configured Foggy MCP connector's `dataset.open_in_viewer`
+tool through Harness's tool policy pipeline. Configure exactly one connector
+that exposes this tool. Its transport retains the configured authorization
+headers; the plugin does not put credentials in the browser contract and does
+not fall back to anonymous HTTP link creation. Asking the assistant to open a
+data view uses the same MCP tool. Both entry points follow the connector's
+service authorization scope and open without an additional username/password
+form.
+The page re-executes the DSL against the current model and data rather than
+freezing the original rows. Launcher 0.1.24 stores viewer links in SQLite by
+default. Links default to no expiry and can be given a TTL or revoked; each
+browser session defaults to one day and has a separately configurable TTL.
+The historical card can request a new link while the transcript, connector,
+Runtime, and model are available. Explicit aggregate `having` conditions are
+retained alongside detail-level `slice` conditions. CTE preview is not included.
+The Harness card retains the complete executed result; the web view displays
+fields supported by the Runtime's model metadata.
 The DataViewer page can export the current filtered and sorted model-backed
 result to CSV (up to 10,000 rows). It refuses larger exports rather than
 silently truncating them.
+
+The native `foggy_query` tool uses the managed CLI's separately configured
+Runtime authorization (for example `FOGGY_RUNTIME_AUTHORIZATION`). It does not
+extract the MCP connector's headers. Verify the query tool and its identity
+when demonstrating restricted data; the shared MCP scope described above
+applies to the two viewer entry points.
 
 This beta remains a local dev/test integration. It does not automatically extend
 local credentials or approvals into a formal environment. Production model
@@ -159,8 +173,8 @@ rollback plan.
 
 See [`docs/PUBLIC-BETA-READINESS.md`](./docs/PUBLIC-BETA-READINESS.md) for the
 tested public Beta scope, release gates, and stable-release blockers.
-The DSH 0.1.7-rc.2 compatibility candidate is documented in
-[`docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.4.md`](./docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.4.md).
+The DSH 0.2.0-rc.2 compatibility candidate is documented in
+[`docs/RELEASE-CANDIDATE-0.4.3-DSH-0.2.0-RC.1.md`](./docs/RELEASE-CANDIDATE-0.4.3-DSH-0.2.0-RC.1.md).
 The previous DSH 0.1.7-rc.2 candidate is documented in
 [`docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.2.md`](./docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.2.md).
 The earlier DSH 0.1.5-rc.2 candidate is documented in

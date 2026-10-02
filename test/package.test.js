@@ -24,7 +24,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.2-rc.5')
+  assert.equal(pkg.version, '0.4.3-rc.1')
   assert.equal(pkg.engines.node, '>=24.0.0')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
@@ -37,7 +37,7 @@ test('declares a standard DeepSeek Harness bundle and web client', async () => {
   assert.equal(pkg.exports['./client'], './lib/client.js')
   assert.equal(pkg.exports['./typert'], './lib/typert.js')
   for (const [name, range] of Object.entries(pkg.peerDependencies)) {
-    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '^0.1.7-rc.2', name)
+    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '^0.2.0-rc.2', name)
   }
 })
 
@@ -47,30 +47,30 @@ test('bundle patch mounts the dual-face Foggy package', async () => {
   assert.match(patch, /@foggy-projects\/deepseek-harness-plugin/)
 })
 
-test('documents the pnpm workspace-root install required by DSH 0.1.7 rc.2', async () => {
+test('documents the pnpm workspace-root install required by DSH 0.2.0 rc.2', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
   const readme = await readFile(join(root, 'README.md'), 'utf8')
   assert.match(readme, /dsh plugin --profile web add --workspace-root/)
   assert.ok(readme.includes(`${pkg.version}.tgz`))
   assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@beta/)
-  assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@dsh017/)
+  assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@dsh020/)
 })
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.2-rc.5')
-  assert.equal(versions.components.deepseekHarness.version, '0.1.7-rc.2')
+  assert.equal(versions.packageVersion, '0.4.3-rc.1')
+  assert.equal(versions.components.deepseekHarness.version, '0.2.0-rc.2')
   assert.equal(versions.components.deepseekHarness.minimumNodeVersion, '24.0.0')
   assert.equal(versions.components.python.version, '3.12.13')
-  assert.equal(versions.components.cli.version, '0.1.23')
-  assert.equal(versions.components.launcher.version, '0.1.23')
+  assert.equal(versions.components.cli.version, '0.1.24')
+  assert.equal(versions.components.launcher.version, '0.1.24')
   assert.equal(versions.components.analysisSkill.version, '0.1.18')
   assert.equal(versions.components.semanticQuerySkill.version, '0.1.18')
   assert.equal(versions.defaults.port, 18166)
   assert.ok(versions.components.launcher.assets.every((asset) => asset.url && asset.sha256))
-  const launcherJar = versions.components.launcher.assets.find((asset) => asset.file === 'foggy-runtime-launcher-0.1.23.jar')
-  assert.equal(launcherJar.sha256, 'e3575c51e457d6b88740ef5949d7e206d5d6046d960fc8ef0884765bf3be8c66')
-  assert.ok(versions.components.launcher.assets.every((asset) => asset.url.includes('/foggy-runtime-launcher-v0.1.23/')))
+  const launcherJar = versions.components.launcher.assets.find((asset) => asset.file === 'foggy-runtime-launcher-0.1.24.jar')
+  assert.equal(launcherJar.sha256, 'fd7b45657853bc2d56c4d51143681d90a644bb848c434f767025a1fdda0a9dac')
+  assert.ok(versions.components.launcher.assets.every((asset) => asset.url.includes('/foggy-runtime-launcher-v0.1.24/')))
   assert.ok(versions.components.analysisSkill.assets.every((asset) => asset.url.includes('/releases/download/v0.1.18/')))
   assert.ok(versions.components.semanticQuerySkill.assets.every((asset) => asset.url.includes('/releases/download/v0.1.18/')))
 })
@@ -90,7 +90,7 @@ test('publishes strict Typert codecs for both schema-field and create-factory lo
   assert.throws(() => inputCodec.create().parse({ port: 80 }))
 })
 
-test('client Typert contribution materializes strict schemas for DSH 0.1.7', async () => {
+test('client Typert contribution materializes strict schemas for DSH 0.2.0', async () => {
   const client = await readFile(join(root, 'lib', 'client.js'), 'utf8')
   let plugin
   runInNewContext(client, {
@@ -409,8 +409,8 @@ test('preserves the previous JSON when a replacement remains locked', async () =
 
 test('pins the publicly published CLI artifacts', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.components.cli.wheel.sha256, 'db428812039e5961db93b5c0dc35b53a21d5c349428e6830c96fbf3218cf8a45')
-  assert.equal(versions.components.cli.checksums.sha256, '1494d7f13af18bef321995509058a1ab43b1d0b2e9f9ea08230dd78028090221')
+  assert.equal(versions.components.cli.wheel.sha256, '83ba22f89621d4a3dd8e2ea8fda33e454509e3a7653ae062bd8cf0ad0cbf60c9')
+  assert.equal(versions.components.cli.checksums.sha256, 'b45b7e5976e8989caca150c433c72b485358163f2a97f85b4742afa05c3687d2')
 })
 
 test('ships a Linux experience entry with private Python and native filesystem prerequisites', async () => {
