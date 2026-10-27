@@ -24,8 +24,9 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.3-rc.1')
+  assert.equal(pkg.version, '0.4.4-rc.1')
   assert.equal(pkg.engines.node, '>=24.0.0')
+  assert.equal(pkg.engines.dsh, '^0.2.1-rc.2')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
   assert.ok(!pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-runtime'))
@@ -37,7 +38,7 @@ test('declares a standard DeepSeek Harness bundle and web client', async () => {
   assert.equal(pkg.exports['./client'], './lib/client.js')
   assert.equal(pkg.exports['./typert'], './lib/typert.js')
   for (const [name, range] of Object.entries(pkg.peerDependencies)) {
-    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '^0.2.0-rc.2', name)
+    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '^0.2.1-rc.2', name)
   }
 })
 
@@ -47,30 +48,30 @@ test('bundle patch mounts the dual-face Foggy package', async () => {
   assert.match(patch, /@foggy-projects\/deepseek-harness-plugin/)
 })
 
-test('documents the pnpm workspace-root install required by DSH 0.2.0 rc.2', async () => {
+test('documents the pnpm workspace-root install required by DSH 0.2.1 rc.2', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
   const readme = await readFile(join(root, 'README.md'), 'utf8')
   assert.match(readme, /dsh plugin --profile web add --workspace-root/)
   assert.ok(readme.includes(`${pkg.version}.tgz`))
   assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@beta/)
-  assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@dsh020/)
+  assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@dsh021/)
 })
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.3-rc.1')
-  assert.equal(versions.components.deepseekHarness.version, '0.2.0-rc.2')
+  assert.equal(versions.packageVersion, '0.4.4-rc.1')
+  assert.equal(versions.components.deepseekHarness.version, '0.2.1-rc.2')
   assert.equal(versions.components.deepseekHarness.minimumNodeVersion, '24.0.0')
   assert.equal(versions.components.python.version, '3.12.13')
-  assert.equal(versions.components.cli.version, '0.1.24')
-  assert.equal(versions.components.launcher.version, '0.1.24')
+  assert.equal(versions.components.cli.version, '0.1.25')
+  assert.equal(versions.components.launcher.version, '0.1.46')
   assert.equal(versions.components.analysisSkill.version, '0.1.18')
   assert.equal(versions.components.semanticQuerySkill.version, '0.1.18')
   assert.equal(versions.defaults.port, 18166)
   assert.ok(versions.components.launcher.assets.every((asset) => asset.url && asset.sha256))
-  const launcherJar = versions.components.launcher.assets.find((asset) => asset.file === 'foggy-runtime-launcher-0.1.24.jar')
-  assert.equal(launcherJar.sha256, 'fd7b45657853bc2d56c4d51143681d90a644bb848c434f767025a1fdda0a9dac')
-  assert.ok(versions.components.launcher.assets.every((asset) => asset.url.includes('/foggy-runtime-launcher-v0.1.24/')))
+  const launcherJar = versions.components.launcher.assets.find((asset) => asset.file === 'foggy-runtime-launcher-0.1.46.jar')
+  assert.equal(launcherJar.sha256, 'f85e56115621cd73ac554e963b00fa46f4ebb30b9b4f5f7de9f56307f1d13ce8')
+  assert.ok(versions.components.launcher.assets.every((asset) => asset.url.startsWith('https://github.com/foggy-projects/foggy-data-mcp-bridge/releases/download/foggy-runtime-launcher-v0.1.46/')))
   assert.ok(versions.components.analysisSkill.assets.every((asset) => asset.url.includes('/releases/download/v0.1.18/')))
   assert.ok(versions.components.semanticQuerySkill.assets.every((asset) => asset.url.includes('/releases/download/v0.1.18/')))
 })
@@ -90,7 +91,7 @@ test('publishes strict Typert codecs for both schema-field and create-factory lo
   assert.throws(() => inputCodec.create().parse({ port: 80 }))
 })
 
-test('client Typert contribution materializes strict schemas for DSH 0.2.0', async () => {
+test('client Typert contribution materializes strict schemas for DSH 0.2.1', async () => {
   const client = await readFile(join(root, 'lib', 'client.js'), 'utf8')
   let plugin
   runInNewContext(client, {
@@ -409,12 +410,18 @@ test('preserves the previous JSON when a replacement remains locked', async () =
 
 test('pins the publicly published CLI artifacts', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.components.cli.wheel.sha256, '83ba22f89621d4a3dd8e2ea8fda33e454509e3a7653ae062bd8cf0ad0cbf60c9')
-  assert.equal(versions.components.cli.checksums.sha256, 'b45b7e5976e8989caca150c433c72b485358163f2a97f85b4742afa05c3687d2')
+  assert.equal(versions.components.cli.wheel.url, 'https://github.com/foggy-projects/foggy-runtime-cli/releases/download/v0.1.25/foggy_runtime_cli-0.1.25-py3-none-any.whl')
+  assert.equal(versions.components.cli.wheel.sha256, '162a0b50d2035132bf679b262fcf5f33ba7b50a462bda28a7def7705323ee0ac')
+  assert.equal(versions.components.cli.checksums.sha256, 'cdf5230dd3c6ed6a1cf14b0a8fcbd3a2e004bc305fb6aeb596a16ff970b6b6ac')
 })
 
 test('ships a Linux experience entry with private Python and native filesystem prerequisites', async () => {
   const script = await readFile(join(root, 'experience', 'linux', 'prepare.sh'), 'utf8')
+  assert.doesNotMatch(script, /\r/, 'Bash entrypoints must retain LF endings when packaged on Windows')
+  for (const name of ['doctor', 'install', 'invoke-onboarding', 'onboard', 'runtime-start', 'runtime-stop', 'uninstall']) {
+    const wrapper = await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'scripts', `${name}.sh`), 'utf8')
+    assert.doesNotMatch(wrapper, /\r/, `${name}.sh must execute on Linux`)
+  }
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
   assert.ok(script.includes(`PLUGIN_VERSION="${pkg.version}"`))
   assert.match(script, /Node >=24 required/)

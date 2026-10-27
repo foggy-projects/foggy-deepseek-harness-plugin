@@ -7,14 +7,24 @@ import test from 'node:test'
 // Release acceptance uses a separate published DSH installation; it must not
 // change the user's web profile or start a web server.
 const compatibilityRoot = process.env.FOGGY_DSH_COMPAT_ROOT
-const acceptance = { skip: !compatibilityRoot && 'Set FOGGY_DSH_COMPAT_ROOT to the isolated DSH 0.2.0-rc.2 installation' }
+const compatibilityVersion = process.env.FOGGY_DSH_COMPAT_VERSION || '0.2.1-rc.2'
+const acceptance = { skip: !compatibilityRoot && 'Set FOGGY_DSH_COMPAT_ROOT to an isolated DSH 0.2.1 installation' }
 const modulePath = (name, file = 'lib/index.js') => join(compatibilityRoot, 'node_modules', ...name.split('/'), file)
 const load = (name, file) => import(pathToFileURL(modulePath(name, file)).href)
 
-test('the packed gateway loads against actual DSH 0.2.0 remote and skill services', acceptance, async () => {
+test('DSH accepts the declared engine range and rejects an older host without an exemption', acceptance, async () => {
+  const { evaluatePluginCompatibility } = await load('@deepseek-ai/dsh-app-boot')
+  const pkg = JSON.parse(await readFile(modulePath('@foggy-projects/deepseek-harness-plugin', 'package.json'), 'utf8'))
+  assert.equal(evaluatePluginCompatibility(pkg, {}, compatibilityVersion), undefined)
+  const olderHost = evaluatePluginCompatibility(pkg, {}, '0.2.0-rc.2')
+  assert.equal(olderHost.exempted, false)
+  assert.deepEqual(olderHost.requirements, { 'engines.dsh': '^0.2.1-rc.2' })
+})
+
+test('the packed gateway loads against actual DSH 0.2.1 remote and skill services', acceptance, async () => {
   for (const name of ['@deepseek-ai/dsh', '@deepseek-ai/dsh-tools', '@deepseek-ai/dsh-typert-protocol', '@deepseek-ai/dsh-skill']) {
     const pkg = JSON.parse(await readFile(modulePath(name, 'package.json'), 'utf8'))
-    assert.equal(pkg.version, '0.2.0-rc.2', name)
+    assert.equal(pkg.version, compatibilityVersion, name)
   }
   const { FoggyIntegrationGateway } = await load('@foggy-projects/deepseek-harness-plugin')
   const { TypertRemoteService } = await load('@deepseek-ai/dsh-typert-protocol')
@@ -64,7 +74,7 @@ test('actual DSH tool runtime dispatches viewer requests and honors a policy den
   }
 })
 
-test('DSH 0.2.0 keeps the completed-turn and query-source client contracts', acceptance, async () => {
+test('DSH 0.2.1 keeps the completed-turn and query-source client contracts', acceptance, async () => {
   const slots = await readFile(modulePath('@deepseek-ai/dsh-client-ui-chat', 'lib/types/client/contract/slots.d.ts'), 'utf8')
   const snapshot = await readFile(modulePath('@deepseek-ai/dsh-client-ui-chat', 'lib/types/client/contract/snapshot.d.ts'), 'utf8')
   const nodes = await readFile(modulePath('@deepseek-ai/dsh-client-ui-chat', 'lib/types/client/contract/chat-nodes.d.ts'), 'utf8')

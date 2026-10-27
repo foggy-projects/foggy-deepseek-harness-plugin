@@ -191,9 +191,22 @@ def versions_path() -> Path:
 
 
 def load_versions() -> dict:
-    data = json.loads(versions_path().read_text(encoding="utf-8"))
+    override = os.environ.get("FOGGY_ONBOARDING_VERSIONS_FILE")
+    data = json.loads((Path(override) if override else versions_path()).read_text(encoding="utf-8"))
     if data.get("schemaVersion") != "foggy-deepseek-onboarding-versions/v1":
         raise OnboardingError("Unexpected versions.json schema")
+    if not override:
+        root = Path(os.environ.get("FOGGY_ONBOARDING_INSTALL_ROOT") or default_install_root())
+        state_path = root / "install-state.json"
+        if state_path.is_file():
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            if state.get("schemaVersion") != STATE_SCHEMA:
+                raise OnboardingError("Unexpected install state schema")
+            selections = state.get("componentSelections", {})
+            for kind in ("cli", "launcher"):
+                if kind in selections:
+                    data["components"][kind] = selections[kind]
+            data["componentSelections"] = selections
     return data
 
 
@@ -1258,6 +1271,8 @@ def install_command(args: argparse.Namespace) -> dict:
     install_root = normalized(args.install_root or default_install_root())
     data_root = normalized(args.data_root or default_data_root())
     cache_dirs = [normalized(item) for item in args.asset_cache_dir]
+    # Retained, verified downloads support offline switching to a previously used version.
+    cache_dirs.extend([install_root / "downloads", install_root / "launcher", install_root / "launchers"])
     components = versions["components"]
     repair_component = getattr(args, "repair_component", None)
     assert_managed_root(install_root, "Install root")
@@ -1294,6 +1309,11 @@ def install_command(args: argparse.Namespace) -> dict:
     verified: list[dict] = []
 
     cli_component = components["cli"]
+    for kind in ("cli", "launcher"):
+        if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", components[kind]["version"]):
+            raise OnboardingError(f"Invalid {kind} component version")
+    cli_downloads = downloads / "cli" / cli_component["version"]
+    cli_root = install_root / "cli" / cli_component["version"]
     cli_assets = [cli_component[role] for role in ("wheel", "checksums")]
     for index, asset in enumerate(cli_assets):
         progress.update(
@@ -1302,7 +1322,7 @@ def install_command(args: argparse.Namespace) -> dict:
             completed_files=index, total_files=len(cli_assets),
         )
         verified.append(materialize(
-            asset, downloads / "cli" / asset["file"], cache_dirs,
+            asset, cli_downloads / asset["file"], cache_dirs,
             progress=progress, progress_phase="cli", progress_step=2,
             progress_index=index, progress_total=len(cli_assets),
             progress_message="Downloading and verifying CLI",
@@ -1313,7 +1333,7 @@ def install_command(args: argparse.Namespace) -> dict:
             fraction=(index + 1) / len(cli_assets), current_file=asset["file"],
             completed_files=index + 1, total_files=len(cli_assets),
         )
-    checksum_lines = (downloads / "cli" / cli_component["checksums"]["file"]).read_text(encoding="utf-8").splitlines()
+    checksum_lines = (cli_downloads / cli_component["checksums"]["file"]).read_text(encoding="utf-8").splitlines()
     checksum_entries = {line.split(maxsplit=1)[1].strip(): line.split(maxsplit=1)[0].lower() for line in checksum_lines if len(line.split(maxsplit=1)) == 2}
     wheel_asset = cli_component["wheel"]
     if checksum_entries.get(wheel_asset["file"]) != wheel_asset["sha256"]:
@@ -1326,19 +1346,19 @@ def install_command(args: argparse.Namespace) -> dict:
         cli_mode = "external"
     else:
         progress.update("cli", 2, "Installing CLI", fraction=0.65, current_file="Python virtual environment")
-        python_path = venv_python(install_root)
+        python_path = venv_python(cli_root)
         if not python_path.is_file():
-            venv.EnvBuilder(with_pip=True).create(install_root / "venv")
-        wheel = downloads / "cli" / cli_component["wheel"]["file"]
+            venv.EnvBuilder(with_pip=True).create(cli_root / "venv")
+        wheel = cli_downloads / cli_component["wheel"]["file"]
         command_result(
             [
                 str(python_path), "-m", "pip", "install", "--upgrade",
-                "--no-deps", "--disable-pip-version-check", str(wheel),
+                "--no-deps", "--no-index", "--disable-pip-version-check", str(wheel),
             ],
             timeout=300,
             check=True,
         )
-        cli_command = venv_cli(install_root)
+        cli_command = venv_cli(cli_root)
         cli_mode = "managed-venv"
     progress.update("cli", 2, "Verifying CLI version", fraction=0.9, current_file="foggy-runtime")
     cli_version = command_result([str(cli_command), "--version"], check=True)
@@ -1349,7 +1369,7 @@ def install_command(args: argparse.Namespace) -> dict:
         raise OnboardingError(f"Unexpected CLI version: {cli_version['stdout']}")
     progress.update("cli", 2, "CLI ready", fraction=1.0)
 
-    launcher_dir = install_root / "launcher"
+    launcher_dir = install_root / "launchers" / components["launcher"]["version"]
     previous_state = read_install_state(install_root, required=False)
     previous_launcher_assets = {}
     if previous_state and previous_state.get("launcher", {}).get("version") != components["launcher"]["version"]:
@@ -1443,6 +1463,8 @@ def install_command(args: argparse.Namespace) -> dict:
         },
         "cli": {"version": cli_component["version"], "command": str(cli_command), "mode": cli_mode},
         "launcher": {"version": components["launcher"]["version"], "path": str(launcher_dir)},
+        "componentManifests": {kind: components[kind] for kind in ("cli", "launcher")},
+        "componentSelections": versions.get("componentSelections", {}),
         "skills": {"onboarding": onboarding_skill, "analysis": analysis_skill, "semanticQuery": semantic_query_skill},
         "verifiedAssets": verified,
         "securityMode": versions["defaults"]["securityMode"],
@@ -3677,6 +3699,8 @@ def main() -> None:
         if callable(reconfigure):
             reconfigure(encoding="utf-8", errors="replace")
     args = build_parser().parse_args()
+    if getattr(args, "install_root", None):
+        os.environ["FOGGY_ONBOARDING_INSTALL_ROOT"] = args.install_root
     try:
         result = args.handler(args)
         exit_code = 0

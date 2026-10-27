@@ -35,6 +35,9 @@ are authoritative; do not copy the Skill into the current workspace.
   is intentionally isolated, so absence from `PATH` does not mean it is missing.
 - Use plugin settings to initialize or repair private Python, CLI, Launcher, or the managed analysis
   Skill. Do not independently reinstall them during a normal analysis session.
+- Settings automatically checks official Launcher/CLI releases and lets the user select a version to
+  download and use. Checks never change installed components. Stop Runtime before switching versions;
+  saved choices persist across plugin upgrades and previously downloaded versions support rollback.
 - Treat the current DSH workspace as `projectRoot`. Keep model drafts and final model files there rather
   than redirecting them to an example repository.
 
@@ -50,6 +53,9 @@ are authoritative; do not copy the Skill into the current workspace.
 3. Create or select the namespace, add/test the datasource online, and bind it to the namespace. Do
    not stop or restart Runtime to make a password available. A running Runtime can accept a direct
    development password through its datasource API.
+   Bind the namespace explicitly even when using the built-in `default` datasource. Launcher 0.1.46
+   detached model validation requires that binding. When using the optional legacy sales-drop replay,
+   first run `foggy-runtime --base-url <url> datasources bind --namespace salesdrop --data-source default`.
 4. Inspect tables, columns, keys, and relationships. Small, bounded, read-only SQL samples are allowed
    when they help infer captions, enums, units, or date semantics. Do not run mutations unless the user
    explicitly requests them.
@@ -72,7 +78,7 @@ are authoritative; do not copy the Skill into the current workspace.
    instead of treating success as proof that every requested option took effect. Free-text advice is
    optional. When a warning indicates possible semantic drift, use `models describe` to prepare a
    corrected payload if the user's intent can be preserved; otherwise disclose the limitation.
-   Runtime 0.1.21 defaults unknown ordinary Query DSL properties to `WARN`; `IGNORE` continues without
+   Unknown ordinary Query DSL properties in `WARN` mode produce structured warnings; `IGNORE` continues without
    `queryInputWarnings`, while `STRICT` rejects the request with the complete structured violations.
    Never reinterpret a protected or governance-field failure as an ignorable warning.
 7. When the model works, recommend committing the model directory to the user's own Git repository.
