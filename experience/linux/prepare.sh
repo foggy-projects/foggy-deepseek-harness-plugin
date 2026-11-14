@@ -3,7 +3,7 @@ set -euo pipefail
 
 DSH_VERSION="0.2.2-rc.3"
 PNPM_VERSION="11.7.0"
-PLUGIN_VERSION="0.4.5-rc.1"
+PLUGIN_VERSION="0.4.5-rc.2"
 PLUGIN_REF="v${PLUGIN_VERSION}"
 PLUGIN_REPOSITORY="https://github.com/foggy-projects/foggy-deepseek-harness-plugin.git"
 

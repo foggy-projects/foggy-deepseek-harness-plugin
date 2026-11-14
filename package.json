@@ -1,6 +1,6 @@
 {
   "name": "@foggy-projects/deepseek-harness-plugin",
-  "version": "0.4.5-rc.1",
+  "version": "0.4.5-rc.2",
   "description": "Foggy Java data analysis engine integration for DeepSeek Harness",
   "keywords": [
     "deepseek-harness",
@@ -51,7 +51,8 @@
     "README.md",
     "docs/RELEASE-CANDIDATE-0.4.3-DSH-0.2.0-RC.1.md",
     "docs/RELEASE-CANDIDATE-0.4.4-DSH-0.2.1-RC.1.md",
-    "docs/RELEASE-CANDIDATE-0.4.5-DSH-0.2.2-RC.1.md"
+    "docs/RELEASE-CANDIDATE-0.4.5-DSH-0.2.2-RC.1.md",
+    "docs/RELEASE-CANDIDATE-0.4.5-DSH-0.2.2-RC.2.md"
   ],
   "license": "Apache-2.0",
   "engines": {

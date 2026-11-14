@@ -1,7 +1,7 @@
 {
   "schemaVersion": "foggy-deepseek-onboarding-versions/v1",
-  "packageVersion": "0.4.5-rc.1",
-  "validatedAt": "2026-11-14",
+  "packageVersion": "0.4.5-rc.2",
+  "validatedAt": "2026-11-15",
   "components": {
     "deepseekHarness": {
       "version": "0.2.2-rc.3",

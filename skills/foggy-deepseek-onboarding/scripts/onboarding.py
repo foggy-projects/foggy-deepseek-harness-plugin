@@ -7,6 +7,7 @@ import argparse
 import datetime as dt
 import errno
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -20,6 +21,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit, urlunsplit
 import venv
 import zipfile
 
@@ -507,6 +509,54 @@ def cached_asset(name: str, expected: str, cache_dirs: list[Path]) -> Path | Non
     return None
 
 
+def safe_remote_url(value: object) -> str:
+    raw = str(value)
+    try:
+        parsed = urlsplit(raw)
+        host = parsed.hostname
+        if not parsed.scheme or not host:
+            return re.sub(r"[?#].*$", "", raw)
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        port = f":{parsed.port}" if parsed.port else ""
+        return urlunsplit((parsed.scheme, f"{host}{port}", parsed.path, "", ""))
+    except (TypeError, ValueError):
+        return re.sub(r"[?#].*$", "", raw)
+
+
+def download_network_error(asset: dict, url: str, error: BaseException) -> str:
+    original_url = safe_remote_url(url)
+    failed_url = safe_remote_url(getattr(error, "url", None) or url)
+    reason = getattr(error, "reason", error)
+    code = getattr(reason, "code", None) or getattr(reason, "errno", None) or getattr(reason, "winerror", None)
+    error_kind = "TIMEOUT" if isinstance(reason, TimeoutError) else type(reason).__name__
+    if code is not None:
+        error_kind += f" ({code})"
+    redirect = f" 实际失败地址（跳转后）：{failed_url}。" if failed_url != original_url else ""
+    host = urlsplit(failed_url).hostname or urlsplit(original_url).hostname or "目标域名"
+    return (
+        f"下载组件文件 {asset.get('file', 'asset')} 失败，无法连接下载服务。"
+        f"下载地址：{original_url}。{redirect}连接错误：{error_kind}。"
+        f"请检查网络、代理和防火墙是否允许访问 {host}；如果当前网络限制 GitHub，"
+        "可能需要配置代理/VPN 或切换到可访问该域名的网络。"
+    )
+
+
+def download_http_error(asset: dict, url: str, error: urllib.error.HTTPError) -> str:
+    original_url = safe_remote_url(url)
+    failed_url = safe_remote_url(error.url or url)
+    redirect = f" 实际响应地址（跳转后）：{failed_url}。" if failed_url != original_url else ""
+    advice = (
+        "服务端拒绝访问或触发限流，请稍后重试并检查访问策略；只有当前网络限制该域名时，才需要代理/VPN。"
+        if error.code in (403, 429)
+        else "网络已连接到服务端，请检查下载链接和发布资源状态；如当前网络存在访问限制，再检查代理/VPN 设置。"
+    )
+    return (
+        f"下载组件文件 {asset.get('file', 'asset')} 失败，服务器返回 HTTP {error.code}。"
+        f"下载地址：{original_url}。{redirect}{advice}"
+    )
+
+
 def materialize(
     asset: dict,
     destination: Path,
@@ -551,7 +601,12 @@ def materialize(
                     completed_files=progress_index, total_files=progress_total,
                 )
 
-            urllib.request.urlretrieve(asset["url"], temporary, reporthook=reporthook)
+            try:
+                urllib.request.urlretrieve(asset["url"], temporary, reporthook=reporthook)
+            except urllib.error.HTTPError as exc:
+                raise OnboardingError(download_http_error(asset, asset["url"], exc)) from exc
+            except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as exc:
+                raise OnboardingError(download_network_error(asset, asset["url"], exc)) from exc
             source = "network"
         verify_asset(temporary, asset["sha256"])
         if destination.is_file():
