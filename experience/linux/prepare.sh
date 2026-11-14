@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DSH_VERSION="0.2.1-rc.2"
+DSH_VERSION="0.2.2-rc.3"
 PNPM_VERSION="11.7.0"
-PLUGIN_VERSION="0.4.4-rc.1"
+PLUGIN_VERSION="0.4.5-rc.1"
 PLUGIN_REF="v${PLUGIN_VERSION}"
 PLUGIN_REPOSITORY="https://github.com/foggy-projects/foggy-deepseek-harness-plugin.git"
 
@@ -73,8 +73,8 @@ require_command git
 require_command df
 require_command tar
 
-node -e 'const [major] = process.versions.node.split(".").map(Number); if (major < 24) process.exit(1)' \
-  || fail "Node >=24 required for DeepSeek Harness ${DSH_VERSION}; detected $(node --version 2>/dev/null || echo unknown)"
+node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 24 || (major === 24 && minor < 9)) process.exit(1)' \
+  || fail "Node >=24.9 required for DeepSeek Harness ${DSH_VERSION}; detected $(node --version 2>/dev/null || echo unknown)"
 
 java_major="$(java -version 2>&1 | awk -F'[\".]' '/version/ { print $2; exit }')"
 [[ "$java_major" =~ ^[0-9]+$ ]] || fail "could not detect Java version"

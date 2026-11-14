@@ -10,8 +10,8 @@ when the plugin package is upgraded.
 The Foggy settings tab includes a **Tutorial** entry linking to
 [Foggy AI Data tutorials](https://ai-data.qlfloor.com/).
 
-The `0.4.4-rc.1` compatibility candidate targets DeepSeek Harness `0.2.1-rc.2`
-and requires a system Node.js `>=24.0.0`. Foggy's Java Launcher uses a system
+The `0.4.5-rc.1` compatibility candidate targets DeepSeek Harness `0.2.2-rc.3`
+and requires a system Node.js `>=24.9.0`. Foggy's Java Launcher uses a system
 Java 17+. Foggy manages its own pinned Python 3.12 runtime
 inside the per-user component directory; it does not require a system Python,
 modify `PATH`, or register Python globally. Advanced users may explicitly set
@@ -20,26 +20,26 @@ modify `PATH`, or register Python globally. Advanced users may explicitly set
 ## Local release-candidate installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.4-rc.1.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.5-rc.1.tgz
 ```
 
 Restart `dsh web`, use the browser it opens (or the complete printed URL,
 including `?token=...`), open Settings → Built-in plugins → Foggy Data Analysis, and
 initialize the components from there. Do not share the launch-token URL.
 
-After the version is available on npm, install the exact DSH 0.2.1-rc.2
+After the version is available on npm, install the exact DSH 0.2.2-rc.3
 compatibility candidate so the stable `beta` channel is not changed:
 
 ```powershell
-dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@0.4.4-rc.1
+dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@0.4.5-rc.1
 ```
 
-DSH 0.2.1 candidates use the `dsh021` npm dist-tag. Check that the tag resolves
+DSH 0.2.2 candidates use the `dsh022` npm dist-tag. Check that the tag resolves
 to the version you intend to install before using it. GitHub's published
 tarball can be installed directly when registry publication is still pending:
 
 ```powershell
-dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@dsh021
+dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@dsh022
 ```
 
 The earlier DSH `0.1.7-rc.2` and `0.1.5-rc.2` candidates remain available as
@@ -196,8 +196,10 @@ rollback plan.
 
 See [`docs/PUBLIC-BETA-READINESS.md`](./docs/PUBLIC-BETA-READINESS.md) for the
 tested public Beta scope, release gates, and stable-release blockers.
-The DSH 0.2.1-rc.2 compatibility candidate is documented in
-[`docs/RELEASE-CANDIDATE-0.4.3-DSH-0.2.0-RC.1.md`](./docs/RELEASE-CANDIDATE-0.4.3-DSH-0.2.0-RC.1.md).
+The current DSH 0.2.2-rc.3 compatibility candidate is documented in
+[`docs/RELEASE-CANDIDATE-0.4.5-DSH-0.2.2-RC.1.md`](./docs/RELEASE-CANDIDATE-0.4.5-DSH-0.2.2-RC.1.md).
+The previous DSH 0.2.1-rc.2 compatibility candidate is documented in
+[`docs/RELEASE-CANDIDATE-0.4.4-DSH-0.2.1-RC.1.md`](./docs/RELEASE-CANDIDATE-0.4.4-DSH-0.2.1-RC.1.md).
 The previous DSH 0.1.7-rc.2 candidate is documented in
 [`docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.2.md`](./docs/RELEASE-CANDIDATE-0.4.2-DSH-0.1.7-RC.2.md).
 The earlier DSH 0.1.5-rc.2 candidate is documented in
