@@ -15,6 +15,7 @@ import re
 import shutil
 import signal
 import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -534,6 +535,21 @@ def download_network_error(asset: dict, url: str, error: BaseException) -> str:
         error_kind += f" ({code})"
     redirect = f" 实际失败地址（跳转后）：{failed_url}。" if failed_url != original_url else ""
     host = urlsplit(failed_url).hostname or urlsplit(original_url).hostname or "目标域名"
+    certificate_failure = (
+        isinstance(reason, ssl.SSLCertVerificationError)
+        or getattr(reason, "verify_code", None) is not None
+        or "CERTIFICATE_VERIFY_FAILED" in str(reason).upper()
+    )
+    if certificate_failure:
+        verify_code = getattr(reason, "verify_code", None)
+        verify_detail = f"（verify code {verify_code}）" if verify_code is not None else ""
+        return (
+            f"下载组件文件 {asset.get('file', 'asset')} 失败：HTTPS 证书校验失败。"
+            f"下载地址：{original_url}。{redirect}错误：SSLCertVerificationError{verify_detail}。"
+            f"客户端收到了 {host} 提供的证书，但无法验证其证书链。这通常与 DNS 或网络不通不同。"
+            "请检查系统日期/时间，以及代理或杀毒软件是否检查 HTTPS；必要时将可信根证书加入 Windows 受信任根证书，"
+            "或设置 SSL_CERT_FILE 指向该 CA 的 PEM 文件。代理/VPN 只有在能避开有问题的 HTTPS 检查时才可能有帮助；请勿关闭证书校验。"
+        )
     return (
         f"下载组件文件 {asset.get('file', 'asset')} 失败，无法连接下载服务。"
         f"下载地址：{original_url}。{redirect}连接错误：{error_kind}。"
@@ -605,7 +621,7 @@ def materialize(
                 urllib.request.urlretrieve(asset["url"], temporary, reporthook=reporthook)
             except urllib.error.HTTPError as exc:
                 raise OnboardingError(download_http_error(asset, asset["url"], exc)) from exc
-            except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as exc:
+            except (urllib.error.URLError, ssl.SSLError, TimeoutError, ConnectionError, http.client.HTTPException) as exc:
                 raise OnboardingError(download_network_error(asset, asset["url"], exc)) from exc
             source = "network"
         verify_asset(temporary, asset["sha256"])
