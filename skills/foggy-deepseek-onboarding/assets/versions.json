@@ -1,11 +1,11 @@
 {
   "schemaVersion": "foggy-deepseek-onboarding-versions/v1",
-  "packageVersion": "0.4.4-rc.1",
-  "validatedAt": "2026-10-27",
+  "packageVersion": "0.4.5-rc.4",
+  "validatedAt": "2026-11-16",
   "components": {
     "deepseekHarness": {
-      "version": "0.2.1-rc.2",
-      "minimumNodeVersion": "24.0.0"
+      "version": "0.2.2-rc.3",
+      "minimumNodeVersion": "24.9.0"
     },
     "python": {
       "version": "3.12.13",

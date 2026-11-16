@@ -24,9 +24,9 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.4-rc.1')
-  assert.equal(pkg.engines.node, '>=24.0.0')
-  assert.equal(pkg.engines.dsh, '^0.2.1-rc.2')
+  assert.equal(pkg.version, '0.4.5-rc.4')
+  assert.equal(pkg.engines.node, '>=24.9.0')
+  assert.equal(pkg.engines.dsh, '^0.2.2-rc.3')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
   assert.ok(!pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-runtime'))
@@ -38,7 +38,7 @@ test('declares a standard DeepSeek Harness bundle and web client', async () => {
   assert.equal(pkg.exports['./client'], './lib/client.js')
   assert.equal(pkg.exports['./typert'], './lib/typert.js')
   for (const [name, range] of Object.entries(pkg.peerDependencies)) {
-    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '^0.2.1-rc.2', name)
+    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '^0.2.2-rc.3', name)
   }
 })
 
@@ -48,20 +48,20 @@ test('bundle patch mounts the dual-face Foggy package', async () => {
   assert.match(patch, /@foggy-projects\/deepseek-harness-plugin/)
 })
 
-test('documents the pnpm workspace-root install required by DSH 0.2.1 rc.2', async () => {
+test('documents the pnpm workspace-root install required by DSH 0.2.2 rc.3', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
   const readme = await readFile(join(root, 'README.md'), 'utf8')
   assert.match(readme, /dsh plugin --profile web add --workspace-root/)
   assert.ok(readme.includes(`${pkg.version}.tgz`))
   assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@beta/)
-  assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@dsh021/)
+  assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@dsh022/)
 })
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.4-rc.1')
-  assert.equal(versions.components.deepseekHarness.version, '0.2.1-rc.2')
-  assert.equal(versions.components.deepseekHarness.minimumNodeVersion, '24.0.0')
+  assert.equal(versions.packageVersion, '0.4.5-rc.4')
+  assert.equal(versions.components.deepseekHarness.version, '0.2.2-rc.3')
+  assert.equal(versions.components.deepseekHarness.minimumNodeVersion, '24.9.0')
   assert.equal(versions.components.python.version, '3.12.13')
   assert.equal(versions.components.cli.version, '0.1.25')
   assert.equal(versions.components.launcher.version, '0.1.46')
@@ -424,7 +424,7 @@ test('ships a Linux experience entry with private Python and native filesystem p
   }
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
   assert.ok(script.includes(`PLUGIN_VERSION="${pkg.version}"`))
-  assert.match(script, /Node >=24 required/)
+  assert.match(script, /Node >=24\.9 required/)
   assert.doesNotMatch(script, /require_command python3/)
   assert.match(script, /private managed 3\.12\.13/)
   assert.match(script, /Java 17\+/)
@@ -443,7 +443,10 @@ test('accepts only the DeepSeek Harness Node engine lines', () => {
   assert.equal(compatibleNode('22.19.0'), false)
   assert.equal(compatibleNode('22.22.0'), false)
   assert.equal(compatibleNode('23.1.0'), false)
-  assert.equal(compatibleNode('24.0.0'), true)
+  assert.equal(compatibleNode('24.0.0'), false)
+  assert.equal(compatibleNode('24.8.9'), false)
+  assert.equal(compatibleNode('24.9.0'), true)
+  assert.equal(compatibleNode('24.22.1'), true)
   assert.equal(compatibleNode('26.0.0'), true)
 })
 
