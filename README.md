@@ -10,7 +10,11 @@ when the plugin package is upgraded.
 The Foggy settings tab includes a **Tutorial** entry linking to
 [Foggy AI Data tutorials](https://ai-data.qlfloor.com/).
 
-The `0.4.5-rc.3` compatibility candidate targets DeepSeek Harness `0.2.2-rc.3`
+The settings page also includes **Uninstall Foggy components**. It stops the
+managed Runtime and removes Foggy's component directory after confirmation. The
+local data directory and the DeepSeek Harness plugin package are preserved.
+
+The `0.4.5-rc.4` compatibility candidate targets DeepSeek Harness `0.2.2-rc.3`
 and requires a system Node.js `>=24.9.0`. Foggy's Java Launcher uses a system
 Java 17+. Foggy manages its own pinned Python 3.12 runtime
 inside the per-user component directory; it does not require a system Python,
@@ -20,7 +24,7 @@ modify `PATH`, or register Python globally. Advanced users may explicitly set
 ## Local release-candidate installation
 
 ```powershell
-dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.5-rc.3.tgz
+dsh plugin --profile web add --workspace-root ./foggy-projects-deepseek-harness-plugin-0.4.5-rc.4.tgz
 ```
 
 Restart `dsh web`, use the browser it opens (or the complete printed URL,
@@ -31,7 +35,7 @@ After the version is available on npm, install the exact DSH 0.2.2-rc.3
 compatibility candidate so the stable `beta` channel is not changed:
 
 ```powershell
-dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@0.4.5-rc.3
+dsh plugin --profile web add --workspace-root @foggy-projects/deepseek-harness-plugin@0.4.5-rc.4
 ```
 
 DSH 0.2.2 candidates use the `dsh022` npm dist-tag. Check that the tag resolves
@@ -203,6 +207,8 @@ certificate verification failures. They distinguish certificate trust errors
 from blocked connections and HTTP error responses.
 
 The current DSH 0.2.2-rc.3 compatibility candidate is documented in
+[`docs/RELEASE-CANDIDATE-0.4.5-DSH-0.2.2-RC.4.md`](./docs/RELEASE-CANDIDATE-0.4.5-DSH-0.2.2-RC.4.md).
+The previous DSH 0.2.2-rc.3 candidate is documented in
 [`docs/RELEASE-CANDIDATE-0.4.5-DSH-0.2.2-RC.3.md`](./docs/RELEASE-CANDIDATE-0.4.5-DSH-0.2.2-RC.3.md).
 The previous DSH 0.2.1-rc.2 compatibility candidate is documented in
 [`docs/RELEASE-CANDIDATE-0.4.4-DSH-0.2.1-RC.1.md`](./docs/RELEASE-CANDIDATE-0.4.4-DSH-0.2.1-RC.1.md).
