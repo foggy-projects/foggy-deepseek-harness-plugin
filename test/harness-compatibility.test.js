@@ -7,8 +7,8 @@ import test from 'node:test'
 // Release acceptance uses a separate published DSH installation; it must not
 // change the user's web profile or start a web server.
 const compatibilityRoot = process.env.FOGGY_DSH_COMPAT_ROOT
-const compatibilityVersion = process.env.FOGGY_DSH_COMPAT_VERSION || '0.2.2-rc.3'
-const acceptance = { skip: !compatibilityRoot && 'Set FOGGY_DSH_COMPAT_ROOT to an isolated DSH 0.2.2-rc.3 installation' }
+const compatibilityVersion = process.env.FOGGY_DSH_COMPAT_VERSION || '0.2.3-alpha.2'
+const acceptance = { skip: !compatibilityRoot && 'Set FOGGY_DSH_COMPAT_ROOT to an isolated DSH 0.2.3-alpha.2 installation' }
 const modulePath = (name, file = 'lib/index.js') => join(compatibilityRoot, 'node_modules', ...name.split('/'), file)
 const load = (name, file) => import(pathToFileURL(modulePath(name, file)).href)
 
@@ -18,11 +18,11 @@ test('DSH accepts the declared engine range and rejects an older host without an
   assert.equal(evaluatePluginCompatibility(pkg, {}, compatibilityVersion), undefined)
   const olderHost = evaluatePluginCompatibility(pkg, {}, '0.2.1-rc.2')
   assert.equal(olderHost.exempted, false)
-  assert.deepEqual(olderHost.requirements, { 'engines.dsh': '^0.2.2-rc.3' })
+  assert.deepEqual(olderHost.requirements, { 'engines.dsh': '^0.2.3-alpha.2' })
 })
 
-test('the packed gateway loads against actual DSH 0.2.2 remote and skill services', acceptance, async () => {
-  for (const name of ['@deepseek-ai/dsh', '@deepseek-ai/dsh-tools', '@deepseek-ai/dsh-typert-protocol', '@deepseek-ai/dsh-skill']) {
+test('the packed gateway loads against actual DSH 0.2.3 remote and skill services', acceptance, async () => {
+  for (const name of ['@deepseek-ai/dsh', '@deepseek-ai/dsh-tools', '@deepseek-ai/dsh-typert-protocol', '@deepseek-ai/dsh-skill', '@deepseek-ai/dsh-client-ui-plugin-manager']) {
     const pkg = JSON.parse(await readFile(modulePath(name, 'package.json'), 'utf8'))
     assert.equal(pkg.version, compatibilityVersion, name)
   }
@@ -106,7 +106,7 @@ test('actual DSH tool runtime dispatches viewer requests and honors a policy den
   }
 })
 
-test('DSH 0.2.2 keeps the completed-turn and query-source client contracts', acceptance, async () => {
+test('DSH 0.2.3 keeps the completed-turn and query-source client contracts', acceptance, async () => {
   const slots = await readFile(modulePath('@deepseek-ai/dsh-client-ui-chat', 'lib/types/client/contract/slots.d.ts'), 'utf8')
   const snapshot = await readFile(modulePath('@deepseek-ai/dsh-client-ui-chat', 'lib/types/client/contract/snapshot.d.ts'), 'utf8')
   const nodes = await readFile(modulePath('@deepseek-ai/dsh-client-ui-chat', 'lib/types/client/contract/chat-nodes.d.ts'), 'utf8')
@@ -115,4 +115,10 @@ test('DSH 0.2.2 keeps the completed-turn and query-source client contracts', acc
   assert.match(snapshot, /turnDataSource<Kind extends ChatNodeKind>\(turn: number, kind: Kind\)/)
   assert.match(nodes, /readonly root: ToolCallBlock/)
   assert.match(toolNodes, /'tool-call': ToolChatData/)
+})
+
+test('DSH 0.2.3 exposes the keyed bundle configuration page contract', acceptance, async () => {
+  const slots = await readFile(modulePath('@deepseek-ai/dsh-client-ui-plugin-manager', 'lib/types/client/slot-contract.d.ts'), 'utf8')
+  assert.match(slots, /'plugins\.bundle\.config':\s*\{\s*kind: 'keyed'/)
+  assert.match(slots, /A bundle's own configuration, keyed by the bundle's package name/)
 })

@@ -58,7 +58,8 @@ test('offline catalog retains downloaded versions and permits an explicit rollba
   const offline = async () => { throw new Error('offline') }
   const catalog = await componentVersions({ roots, bundled, state, fetchImpl: offline })
   assert.equal(catalog.stale, true)
-  assert.match(catalog.error, /Cannot reach/)
+  assert.match(catalog.error, /api\.github\.com/)
+  assert.match(catalog.error, /FETCH_FAILED/)
   assert.equal(catalog.components.launcher.releases.find((entry) => entry.version === '0.1.24').downloaded, true)
   assert.equal(catalog.components.launcher.bundledVersion, '0.1.46')
   assert.equal(catalog.components.launcher.installedVersion, '0.1.24')
@@ -78,7 +79,7 @@ test('incomplete downloads cannot masquerade as an offline rollback and versions
   const { roots, state } = await fixture(t)
   await rememberInstalledComponents(roots, state)
   await rm(state.verifiedAssets[0].path)
-  await assert.rejects(prepareComponentVersion({ roots, bundled, state, component: 'launcher', version: '0.1.24', fetchImpl: async () => { throw new Error('offline') } }), /Cannot reach/)
+  await assert.rejects(prepareComponentVersion({ roots, bundled, state, component: 'launcher', version: '0.1.24', fetchImpl: async () => { throw new Error('offline') } }), /FETCH_FAILED/)
   await assert.rejects(prepareComponentVersion({ roots, bundled, state, component: 'cli', version: '0.1.23' }), /0.1.24 or later/)
   await assert.rejects(prepareComponentVersion({ roots, bundled, state, component: 'cli', version: '../../bad' }), /Invalid component version/)
 })

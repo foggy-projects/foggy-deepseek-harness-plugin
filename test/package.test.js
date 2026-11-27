@@ -24,11 +24,13 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
 test('declares a standard DeepSeek Harness bundle and web client', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.4.5-rc.4')
-  assert.equal(pkg.engines.node, '>=24.9.0')
-  assert.equal(pkg.engines.dsh, '^0.2.2-rc.3')
+  assert.equal(pkg.version, '0.4.6-rc.1')
+  assert.equal(pkg.engines.node, '^24.22.3 || >=26.13.1')
+  assert.equal(pkg.engines.dsh, '^0.2.3-alpha.2')
   assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(pkg.dsh.client.platform, 'web')
+  assert.ok(pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-plugin-manager'))
+  assert.ok(!pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-settings-plugins'))
   assert.ok(!pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-runtime'))
   assert.equal(pkg.peerDependencies['@deepseek-ai/dsh-client-runtime'], undefined)
   assert.equal(pkg.dependencies['@deepseek-ai/dsh-tools'], undefined)
@@ -38,7 +40,7 @@ test('declares a standard DeepSeek Harness bundle and web client', async () => {
   assert.equal(pkg.exports['./client'], './lib/client.js')
   assert.equal(pkg.exports['./typert'], './lib/typert.js')
   for (const [name, range] of Object.entries(pkg.peerDependencies)) {
-    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '^0.2.2-rc.3', name)
+    if (name.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '^0.2.3-alpha.2', name)
   }
 })
 
@@ -48,20 +50,20 @@ test('bundle patch mounts the dual-face Foggy package', async () => {
   assert.match(patch, /@foggy-projects\/deepseek-harness-plugin/)
 })
 
-test('documents the pnpm workspace-root install required by DSH 0.2.2 rc.3', async () => {
+test('documents the pnpm workspace-root install required by DSH 0.2.3 alpha.2', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
   const readme = await readFile(join(root, 'README.md'), 'utf8')
   assert.match(readme, /dsh plugin --profile web add --workspace-root/)
   assert.ok(readme.includes(`${pkg.version}.tgz`))
   assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@beta/)
-  assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@dsh022/)
+  assert.match(readme, /@foggy-projects\/deepseek-harness-plugin@dsh023/)
 })
 
 test('ships the pinned onboarding manifest without the Java launcher binary', async () => {
   const versions = JSON.parse(await readFile(join(root, 'skills', 'foggy-deepseek-onboarding', 'assets', 'versions.json'), 'utf8'))
-  assert.equal(versions.packageVersion, '0.4.5-rc.4')
-  assert.equal(versions.components.deepseekHarness.version, '0.2.2-rc.3')
-  assert.equal(versions.components.deepseekHarness.minimumNodeVersion, '24.9.0')
+  assert.equal(versions.packageVersion, '0.4.6-rc.1')
+  assert.equal(versions.components.deepseekHarness.version, '0.2.3-alpha.2')
+  assert.equal(versions.components.deepseekHarness.minimumNodeVersion, '24.22.3')
   assert.equal(versions.components.python.version, '3.12.13')
   assert.equal(versions.components.cli.version, '0.1.25')
   assert.equal(versions.components.launcher.version, '0.1.46')
@@ -127,6 +129,44 @@ test('client Typert contribution materializes strict schemas for DSH 0.2.1', asy
       assert.equal(typeof parameter.codec.create().parse, 'function', `${descriptor.id} ${parameter.name} schema`)
     }
   }
+})
+
+test('registers Foggy settings on its package page in the DSH plugin manager', async () => {
+  const client = await readFile(join(root, 'lib', 'client.js'), 'utf8')
+  let plugin
+  runInNewContext(client, {
+    window: {
+      __ModuleLoader__: {
+        load({ factory }) {
+          plugin = factory((specifier) => {
+            if (specifier === 'react/jsx-runtime') return { jsx() {}, jsxs() {} }
+            if (specifier === 'react') return { useCallback() {}, useEffect() {}, useState() {} }
+            throw new Error(`Unexpected client dependency: ${specifier}`)
+          })
+        },
+      },
+    },
+    document: { querySelector: () => ({}) },
+  })
+  const entries = new Map()
+  const remoteCtx = {
+    remote: { foggyIntegration: {} },
+    slots: {
+      inject: (_name, register) => register(),
+      register: (definition, component) => { entries.set(definition.name, { definition, component }) },
+    },
+    sessions: { binding: () => 'binding' },
+    uiConversation: { binding: () => ({ target: () => ({ getSnapshot: () => ({ nodes: { turnDataSource: () => [] } }) }) }) },
+  }
+  await plugin.apply({
+    remote: { $mount: async () => () => {} }, effect() {},
+    locale: { register() {}, bind: () => (key) => key },
+    inject: (_services, callback) => callback(remoteCtx),
+  })
+  const entry = entries.get('plugins.bundle.config')
+  assert.equal(entry.definition.key, '@foggy-projects/deepseek-harness-plugin')
+  assert.equal(typeof entry.component, 'function')
+  assert.equal(entries.has('settings.plugins.tab'), false)
 })
 
 test('renders successful Foggy queries in the standard completed-turn tail and folds after six', async () => {
@@ -424,7 +464,7 @@ test('ships a Linux experience entry with private Python and native filesystem p
   }
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
   assert.ok(script.includes(`PLUGIN_VERSION="${pkg.version}"`))
-  assert.match(script, /Node >=24\.9 required/)
+  assert.match(script, /Node 24\.22\.3\+ or 26\.13\.1\+ required/)
   assert.doesNotMatch(script, /require_command python3/)
   assert.match(script, /private managed 3\.12\.13/)
   assert.match(script, /Java 17\+/)
@@ -445,9 +485,15 @@ test('accepts only the DeepSeek Harness Node engine lines', () => {
   assert.equal(compatibleNode('23.1.0'), false)
   assert.equal(compatibleNode('24.0.0'), false)
   assert.equal(compatibleNode('24.8.9'), false)
-  assert.equal(compatibleNode('24.9.0'), true)
-  assert.equal(compatibleNode('24.22.1'), true)
-  assert.equal(compatibleNode('26.0.0'), true)
+  assert.equal(compatibleNode('24.9.0'), false)
+  assert.equal(compatibleNode('24.22.2'), false)
+  assert.equal(compatibleNode('24.22.3'), true)
+  assert.equal(compatibleNode('24.23.0'), true)
+  assert.equal(compatibleNode('25.0.0'), false)
+  assert.equal(compatibleNode('26.0.0'), false)
+  assert.equal(compatibleNode('26.13.0'), false)
+  assert.equal(compatibleNode('26.13.1'), true)
+  assert.equal(compatibleNode('27.0.0'), true)
 })
 
 test('exposes persistent initialization and Runtime startup progress to the web client', async () => {

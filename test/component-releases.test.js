@@ -131,7 +131,8 @@ test('offline checks keep cached releases, retry later and allow an explicit ret
   const result = await checkComponentReleases({ dataRoot: root, fetchImpl: offline, now: later })
   assert.equal(result.stale, true)
   assert.equal(result.components.launcher.latestVersion, '0.1.46')
-  assert.match(result.error, /Cannot reach/)
+  assert.match(result.error, /https:\/\/api\.github\.com\/repos\/foggy-projects\/foggy-data-mcp-bridge\/releases/)
+  assert.match(result.error, /FETCH_FAILED/)
   await checkComponentReleases({ dataRoot: root, fetchImpl: offline, now: later })
   assert.equal(requests, 2)
   await checkComponentReleases({ dataRoot: root, fetchImpl: offline, now: later, force: true })
@@ -144,7 +145,8 @@ test('failed initial checks and rate limits are nonfatal catalog errors', async 
   assert.equal(result.stale, true)
   assert.equal(result.checkedAt, null)
   assert.equal(result.components.launcher.latestVersion, null)
-  assert.match(result.error, /rate limited/)
+  assert.match(result.error, /HTTP 403/)
+  assert.match(result.error, /限流/)
 })
 
 test('resolves official launcher and CLI to verified component receipts', async () => {
